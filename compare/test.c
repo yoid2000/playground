@@ -1,9 +1,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 /* Verbose level 1 */
-#define V1
+//#define V1
 
 doDiff(unsigned long highVal, unsigned long lowVal) {
   unsigned int i, j;
@@ -111,7 +112,7 @@ doOneTest(unsigned char* testNum, unsigned long v1, unsigned long v2, unsigned i
   }
 }
 
-runTests() {
+runCorrectnessTests() {
   unsigned long v1, v2;
 
   v1 = 0x0123456789abcdef;
@@ -172,10 +173,44 @@ runTests() {
 //       >>>>>>>>>>>>>>>>(5)
   doOneTest("T10", v1, v2, 30);
 
-  printf("All tests passed!\n");
+  printf("All correctness tests passed!\n");
+}
+
+#define BILLION 1000000000L
+#define NUM_RUNS 1000000L
+runSpeedTests() {
+  unsigned long diff, v1, v2;
+  struct timespec start, end;
+  unsigned long i;
+
+  v1 = 0x0123456789abcdef;
+  v2 = 0x0123456789abcdef;
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  for (i = 0; i < NUM_RUNS; i++) {
+    doDiff(v1, v2);
+  }
+  clock_gettime(CLOCK_MONOTONIC, &end);
+
+  diff = BILLION * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec;
+  printf("Fast elapsed = %llu nanoseconds\n", (long long unsigned int) diff);
+  printf("Fast per run = %d nanoseconds\n", (int) (diff / NUM_RUNS));
+  printf("Fast Throughput is %d diffs per second\n", (int) (BILLION / (diff / NUM_RUNS)));
+
+  v2 = 0xfedcba9876543210;
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  for (i = 0; i < NUM_RUNS; i++) {
+    doDiff(v1, v2);
+  }
+  clock_gettime(CLOCK_MONOTONIC, &end);
+
+  diff = BILLION * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec;
+  printf("Slow elapsed = %llu nanoseconds\n", (long long unsigned int) diff);
+  printf("Slow per run = %d nanoseconds\n", (int) (diff / NUM_RUNS));
+  printf("Slow Throughput is %d diffs per second\n", (int) (BILLION / (diff / NUM_RUNS)));
 }
 
 main() 
 {
-  runTests();
+  runCorrectnessTests();
+  runSpeedTests();
 }
