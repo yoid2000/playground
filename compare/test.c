@@ -4,13 +4,14 @@
 #include <time.h>
 
 /* Verbose level 1 */
-//#define V1
+// #define V1
 
 doDiff(unsigned long highVal, unsigned long lowVal) {
   unsigned int i, j;
   unsigned long mask, high, low;
   int highShift, lowShift, foundMatch;
   unsigned int numMatches = 0;
+  int spread = 2;  /* how far the windows spread apart looking for matches */
 
   highShift = 58;	/* init shift value if mask is 6 bits */
   lowShift = 58;
@@ -27,7 +28,7 @@ doDiff(unsigned long highVal, unsigned long lowVal) {
       low = (lowVal >> lowShift) & mask;
     }
     /* first slide the high window and compare with low */
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < spread; i++) {
       if (highShift >= 0) {
         high = (highVal >> highShift) & mask;
       }
@@ -50,12 +51,12 @@ doDiff(unsigned long highVal, unsigned long lowVal) {
       /* didn't find a match while shifting the highVal window,
        * so let's try shifting the lowVal window */
       /* put the highVal window back */
-      highShift += 4;
+      highShift += spread;
       if (highShift >= 0) {
         high = (highVal >> highShift) & mask;
       }
       lowShift--;
-      for (i = 0; i < 3; i++) {
+      for (i = 0; i < (spread-1); i++) {
         if (lowShift >= 0) {
           low = (lowVal >> lowShift) & mask;
         }
@@ -78,7 +79,7 @@ doDiff(unsigned long highVal, unsigned long lowVal) {
     if (foundMatch == 0) {
       /* move both shift's to the next increment */
       highShift--;
-      lowShift += 3;
+      lowShift += (spread-1);
     }
     else {
       /* since we found a match, we "synch" the two windows to
@@ -114,6 +115,12 @@ doOneTest(unsigned char* testNum, unsigned long v1, unsigned long v2, unsigned i
 
 runCorrectnessTests() {
   unsigned long v1, v2;
+
+
+/* an outlier from the callibration. */
+  v1 = 0xfbdac9feaedbbb72;
+  v2 =  0xfbdac9feb76dddb9;
+  doOneTest("T11", v1, v2, 30);
 
   v1 = 0x0123456789abcdef;
   v2 = 0x0123456789abcdef;
@@ -209,8 +216,125 @@ runSpeedTests() {
   printf("Slow Throughput is %d diffs per second\n", (int) (BILLION / (diff / NUM_RUNS)));
 }
 
+int cmpfunc (const void * a, const void * b)
+{
+   return ( *(int*)a - *(int*)b );
+}
+
+/* Ignore duplicate random numbers (on rare occasion, may be duplicate
+ * user in a given bucket */
+makeInitBucket(unsigned long* bp, int bsize) {
+  int i;
+
+  for (i = 0; i < bsize; i++) {
+    *bp = lrand48();
+    bp++;
+  }
+}
+
+/* The higher the prob, the more overlap between the two buckets */
+int
+makeCompareBucket(unsigned long* bp1, unsigned long* bp2, int bsize, double prob) {
+  int i;
+  int numDiffs = 0;
+
+  for (i = 0; i < bsize; i++) {
+    if (drand48() <= prob) {
+      *bp2 = *bp1;
+    }
+    else {
+      numDiffs++;
+    }
+    bp1++;
+    bp2++;
+  }
+  return(numDiffs);
+}
+
+printBucket(unsigned long* bp, int bsize) {
+  int i;
+
+  for (i = 0; i < bsize; i++) {
+    printf("%4d: %lx\n", i, *bp);
+    bp++;
+  }
+}
+
+printBucketPair(unsigned long* bp1, unsigned long* bp2, int bsize) {
+  int i;
+
+  for (i = 0; i < bsize; i++) {
+    printf("%4d: %lx, %lx\n", i, *bp1, *bp2);
+    bp1++;
+    bp2++;
+  }
+}
+
+makeVectors(unsigned long* v1, unsigned long* v2, 
+            unsigned long* bp1, unsigned long* bp2, int bsize) {
+  int i, shiftNum;
+  unsigned long *bpp1, *bpp2;
+
+  *v1 = 0L;
+  *v2 = 0L;
+
+
+  bpp1 = bp1;
+  bpp2 = bp2;
+  shiftNum = 63;
+  i = 0;
+  for (shiftNum = 63; shiftNum >=0; shiftNum--) {
+    *v1 |= ((*bpp1 & 1L) << shiftNum);
+    *v2 |= ((*bpp2 & 1L) << shiftNum);
+
+    /* if the bucket is smaller than 64, we just loop back around */
+    if (++i == bsize) {
+      bpp1 = bp1;
+      bpp2 = bp2;
+    }
+    else
+    {
+      bpp1++;
+      bpp2++;
+    }
+  }
+}
+
+#define BUCKET_SIZE 1000
+#define REPEAT_PROB 0.00
+runCallibrationTest() {
+  long int ran;
+  unsigned long bucket1[BUCKET_SIZE];
+  unsigned long bucket2[BUCKET_SIZE];
+  int i, j, numMatches, numBucketDiffs;
+  unsigned long v1, v2;
+  double probList[] = {0.999, 0.998, 0.995, 0.99, 0.98, 0.95, 0.9, 0.8, 0.7, 0.6, 0.5, 0.25, 0.0};
+  double prob, percentOverlap, percentDiff;
+
+  srand48((long int) 1);
+
+  j = 0;
+  while (probList[j] != 0.0) {
+    for (i = 0; i < 100; i++) {
+      makeInitBucket(bucket1, BUCKET_SIZE);
+      makeInitBucket(bucket2, BUCKET_SIZE);
+      numBucketDiffs = makeCompareBucket(bucket1, bucket2, BUCKET_SIZE, probList[j]);
+      qsort(bucket1, BUCKET_SIZE, sizeof(unsigned long), cmpfunc);
+      qsort(bucket2, BUCKET_SIZE, sizeof(unsigned long), cmpfunc);
+      makeVectors(&v1, &v2, bucket1, bucket2, BUCKET_SIZE);
+      numMatches = doDiff(v1, v2);
+      percentOverlap = ((double)BUCKET_SIZE - (double)numBucketDiffs) / (double)BUCKET_SIZE;
+      percentDiff = (double)numBucketDiffs / (double)BUCKET_SIZE;
+      printf("%d, %d, %d, %lx, %lx\n", j, numBucketDiffs, numMatches, v1, v2);
+      //printf("%d buckets differences, %d vector matches, %lx, %lx\n", numBucketDiffs, numMatches, v1, v2);
+    }
+    ++j;
+  }
+}
+
 main() 
 {
-  runCorrectnessTests();
-  runSpeedTests();
+  // runCorrectnessTests();
+  // runSpeedTests();
+  runCallibrationTest();
 }
