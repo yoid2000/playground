@@ -6,16 +6,28 @@
 /* Verbose level 1 */
 // #define V1
 
-doDiff(unsigned long highVal, unsigned long lowVal) {
+/* doDiffv1 passes a window of size `window` bits over the vectors
+ * (highVal and lowVal).  It keeps the windows sync'd to likely
+ * matching substrings.  It does this as follows:  when it finds a
+ * matching substring, it increments both windows as starts a new
+ * round.  Within a round, it looks for a matching substring by
+ * shifting each window a distance of `spread` bits relative to the
+ * other window.  Each time a match is found, the `numMatches` 
+ * variable is incremented.  A perfect match produces (64-window+1)
+ * numMatches. */
+doDiffv1(int window, int spread, unsigned long highVal, unsigned long lowVal) {
   unsigned int i, j;
   unsigned long mask, high, low;
   int highShift, lowShift, foundMatch;
   unsigned int numMatches = 0;
-  int spread = 2;  /* how far the windows spread apart looking for matches */
 
-  highShift = 58;	/* init shift value if mask is 6 bits */
-  lowShift = 58;
-  mask = 0x3f;
+  highShift = 64 - window;	/* init shift value if mask is 6 bits */
+  lowShift = 64 - window;
+  mask = 1;
+  for (i = 1; i < window; i++) {
+    mask <<= 1;
+    mask |= 1;
+  }
   while((highShift >= 0) || (lowShift >= 0)) {
 #ifdef V1
     printf("....\n");
@@ -86,7 +98,7 @@ doDiff(unsigned long highVal, unsigned long lowVal) {
        * this match, on the assumption that one or the other
        * windows had an "extra" bit.  This corrects for that
        * extra bit.  This could be an incorrect assumption, but
-       * we assume that the the 4-bit slide is wide enough to
+       * we assume that the the spread is wide enough to
        * correct for it later */
       highShift--;
       lowShift--;
@@ -95,18 +107,18 @@ doDiff(unsigned long highVal, unsigned long lowVal) {
   return(numMatches);
 }
 
-doOneTest(unsigned char* testNum, unsigned long v1, unsigned long v2, unsigned int expectedNumMatches) {
+doOneTest(int window, int spread, unsigned char* testNum, unsigned long v1, unsigned long v2, unsigned int expectedNumMatches) {
   unsigned int numMatches;
 
 #ifdef V1
   printf("---- TEST %s ----\n", testNum);
 #endif
-  if ((numMatches = doDiff(v1, v2)) != expectedNumMatches) {
+  if ((numMatches = doDiffv1(window, spread, v1, v2)) != expectedNumMatches) {
     printf("FAIL1 %s\nv1 = 0x%lx\nv2 = 0x%lx\nExpected %d, got %d\n", 
         testNum, v1, v2, expectedNumMatches, numMatches);
     exit(0);
   }
-  if ((numMatches = doDiff(v2, v1)) != expectedNumMatches) {
+  if ((numMatches = doDiffv1(window, spread, v2, v1)) != expectedNumMatches) {
     printf("FAIL2 %s\nv1 = 0x%lx\nv2 = 0x%lx\nExpected %d, got %d\n", 
         testNum, v1, v2, expectedNumMatches, numMatches);
     exit(0);
@@ -117,39 +129,34 @@ runCorrectnessTests() {
   unsigned long v1, v2;
 
 
-/* an outlier from the callibration. */
-  v1 = 0xfbdac9feaedbbb72;
-  v2 =  0xfbdac9feb76dddb9;
-  doOneTest("T11", v1, v2, 30);
-
   v1 = 0x0123456789abcdef;
   v2 = 0x0123456789abcdef;
-  doOneTest("T01", v1, v2, 59);
+  doOneTest(6, 4, "T01", v1, v2, 59);
 
   v2 = 0x0123456689abcdef;
 //              ^
-  doOneTest("T02", v1, v2, 53);
+  doOneTest(6, 4, "T02", v1, v2, 53);
 
   v2 = 0x0123456489abcdef;
 //              ^
-  doOneTest("T03", v1, v2, 52);
+  doOneTest(6, 4, "T03", v1, v2, 52);
 
   /* happens to be one "random" match */
   v2 = 0xfedcba9876543210;
 //       ^^^^^^^^^^^^^^^^
-  doOneTest("T04", v1, v2, 1);
+  doOneTest(6, 4, "T04", v1, v2, 1);
 
   /* last 4 bytes shifted right by one */
   v2 = 0x0123456789ab66f7;
 //                   >>>>(1)
-  doOneTest("T05", v1, v2, 53);
+  doOneTest(6, 4, "T05", v1, v2, 53);
 
   /* whole thing shifted right by one (1's shifted in)
    * (we get a match in the 1st round, then good from 
    * there with windows off by one.) */
   v2 = 0x8091a2b3c4d5e6f7;
 //       >>>>>>>>>>>>>>>>(1)
-  doOneTest("T06", v1, v2, 58);
+  doOneTest(6, 4, "T06", v1, v2, 58);
 
   /* whole thing shifted right by three (1's shifted in)
    * (we get a match in the 1st round, then good from 
@@ -157,28 +164,28 @@ runCorrectnessTests() {
    * whole thing 2 rounds early.) */
   v2 = 0xe02468acf13579bd;
 //       >>>>>>>>>>>>>>>>(3)
-  doOneTest("T07", v1, v2, 56);
+  doOneTest(6, 4, "T07", v1, v2, 56);
 
   /* whole thing shifted right by five (1's shifted in)
    * (shift to big for windows to find, however, get
    * three "lucky" matches) */
   v2 = 0xf8091a2b3c4d5e6f;
 //       >>>>>>>>>>>>>>>>(5)
-  doOneTest("T08", v1, v2, 3);
+  doOneTest(6, 4, "T08", v1, v2, 3);
 
   /* first half shifted right by one, 2nd half shifted
    * back left by one. (miss a couple in the middle before
    * betting back in sync) */
   v2 = 0x8091a2b389abcdef;
 //       >>>>>>>><<<<<<<<(1)
-  doOneTest("T09", v1, v2, 56);
+  doOneTest(6, 4, "T09", v1, v2, 56);
 
   /* whole thing shifted right by five, 2nd half shifted
    * back left by 5. (should successfully gets back on sync
    * in the middle) */
   v2 = 0xf8091a2b89abcdef;
 //       >>>>>>>>>>>>>>>>(5)
-  doOneTest("T10", v1, v2, 30);
+  doOneTest(6, 4, "T10", v1, v2, 30);
 
   printf("All correctness tests passed!\n");
 }
@@ -194,7 +201,7 @@ runSpeedTests() {
   v2 = 0x0123456789abcdef;
   clock_gettime(CLOCK_MONOTONIC, &start);
   for (i = 0; i < NUM_RUNS; i++) {
-    doDiff(v1, v2);
+    doDiffv1(6, 4, v1, v2);
   }
   clock_gettime(CLOCK_MONOTONIC, &end);
 
@@ -206,7 +213,7 @@ runSpeedTests() {
   v2 = 0xfedcba9876543210;
   clock_gettime(CLOCK_MONOTONIC, &start);
   for (i = 0; i < NUM_RUNS; i++) {
-    doDiff(v1, v2);
+    doDiffv1(6, 4, v1, v2);
   }
   clock_gettime(CLOCK_MONOTONIC, &end);
 
@@ -232,9 +239,10 @@ makeInitBucket(unsigned long* bp, int bsize) {
   }
 }
 
-/* The higher the prob, the more overlap between the two buckets */
+/* The higher the prob, the more overlap between the two buckets.
+ * This routine produces a random number of differences. */
 int
-makeCompareBucket(unsigned long* bp1, unsigned long* bp2, int bsize, double prob) {
+makeCompareBucketRandom(unsigned long* bp1, unsigned long* bp2, int bsize, double prob) {
   int i;
   int numDiffs = 0;
 
@@ -249,6 +257,21 @@ makeCompareBucket(unsigned long* bp1, unsigned long* bp2, int bsize, double prob
     bp2++;
   }
   return(numDiffs);
+}
+
+/* This routine must be called on pre-sorted buckets.  The User IDs
+ * in the bucket must be randomly distributed */
+makeCompareBucketFixed(unsigned long* bp1, unsigned long* bp2, int bsize, int numDiffs) {
+  int i, numSame;
+  
+  numSame = bsize - numDiffs;
+  if (numSame < 0) { numSame = 0; }
+
+  for (i = 0; i < numSame; i++) {
+    *bp2 = *bp1;
+    bp1++;
+    bp2++;
+  }
 }
 
 printBucket(unsigned long* bp, int bsize) {
@@ -300,41 +323,188 @@ makeVectors(unsigned long* v1, unsigned long* v2,
   }
 }
 
-#define BUCKET_SIZE 1000
-#define REPEAT_PROB 0.00
-runCallibrationTest() {
-  long int ran;
-  unsigned long bucket1[BUCKET_SIZE];
-  unsigned long bucket2[BUCKET_SIZE];
+/* This callibration produces real buckets, with an overlap determined
+ * by a random function (according to the probabilities in the
+ * probList[]).  The real buckets are then coded into our 64-bit
+ * vectors, and compared. */
+runCallibrationTestRandom(int bucketSize, int window, int spread, int numSamples, int detail) {
+  unsigned long* bucket1;
+  unsigned long* bucket2;
   int i, j, numMatches, numBucketDiffs;
   unsigned long v1, v2;
-  double probList[] = {0.999, 0.998, 0.995, 0.99, 0.98, 0.95, 0.9, 0.8, 0.7, 0.6, 0.5, 0.25, 0.0};
+  double probList[12] = {0.999, 0.998, 0.995, 0.99, 0.98, 0.95, 0.9, 0.8, 0.7, 0.6, 0.5, 0.25};
   double prob, percentOverlap, percentDiff;
+  int hits[10], h;  
 
-  srand48((long int) 1);
+  bucket1 = (unsigned long*) calloc(bucketSize, sizeof(unsigned long));
+  bucket2 = (unsigned long*) calloc(bucketSize, sizeof(unsigned long));
 
-  j = 0;
-  while (probList[j] != 0.0) {
-    for (i = 0; i < 100; i++) {
-      makeInitBucket(bucket1, BUCKET_SIZE);
-      makeInitBucket(bucket2, BUCKET_SIZE);
-      numBucketDiffs = makeCompareBucket(bucket1, bucket2, BUCKET_SIZE, probList[j]);
-      qsort(bucket1, BUCKET_SIZE, sizeof(unsigned long), cmpfunc);
-      qsort(bucket2, BUCKET_SIZE, sizeof(unsigned long), cmpfunc);
-      makeVectors(&v1, &v2, bucket1, bucket2, BUCKET_SIZE);
-      numMatches = doDiff(v1, v2);
-      percentOverlap = ((double)BUCKET_SIZE - (double)numBucketDiffs) / (double)BUCKET_SIZE;
-      percentDiff = (double)numBucketDiffs / (double)BUCKET_SIZE;
-      printf("%d, %d, %d, %lx, %lx\n", j, numBucketDiffs, numMatches, v1, v2);
+  for (j = 0; j < 12; j++) {
+    for (h = 0; h < 10; hits[h++] = 0);
+    for (i = 0; i < numSamples; i++) {
+      makeInitBucket(bucket1, bucketSize);
+      makeInitBucket(bucket2, bucketSize);
+      numBucketDiffs = makeCompareBucketRandom(bucket1, bucket2, bucketSize, probList[j]);
+      qsort(bucket1, bucketSize, sizeof(unsigned long), cmpfunc);
+      qsort(bucket2, bucketSize, sizeof(unsigned long), cmpfunc);
+      makeVectors(&v1, &v2, bucket1, bucket2, bucketSize);
+      numMatches = doDiffv1(window, spread, v1, v2);
+      h = (64-window+1) - numMatches;
+      if (h < 0) {
+        printf("ERROR: h < 0\n");
+        exit(1);
+      }
+      for (; h < 10; hits[h++]++);
+      percentOverlap = ((double)bucketSize - (double)numBucketDiffs) / (double)bucketSize;
+      percentDiff = (double)numBucketDiffs / (double)bucketSize;
+      if (detail) {printf("%d, %d, %d, %lx, %lx\n", j, numBucketDiffs, numMatches, v1, v2);}
       //printf("%d buckets differences, %d vector matches, %lx, %lx\n", numBucketDiffs, numMatches, v1, v2);
     }
-    ++j;
+    if (detail == 0) {
+      printf("B%d, W%d, S%d, P%.3f: ", bucketSize, window, spread, probList[j]);
+      for (h = 0; h < 10; h++) {
+        printf("%d:%.2f, ", h, (float) hits[h] / (float) numSamples);
+      }
+      printf("\n");
+    }
   }
+  free(bucket1);
+  free(bucket2);
+  printf("--------------------------------\n");
+}
+
+
+/* This callibration test generates the buckets with an exact known
+ * known number of differences between them.  If the buckets are of
+ * size 64, then the resulting vectors also have an exact known number
+ * of differences.  When `detail` is 0, this test records and prints:
+ *   the fraction of vectors that had at least X numMatches,
+ *   the average, max, and min matches for each numDiff,
+ *   the fraction of bucket differences that contributed to each
+ *       numMatch.  
+ * When `detail` is 1, this test prints the numDiffs and
+ * numMatchs for every pair of vectors.
+ *
+ * NOTE: this code only tested for bucketSize = 64.
+ */
+runCallibrationTestFixed(int bucketSize, int window, int spread, int numGroups, int numSamples, int detail) {
+  unsigned long* bucket1;
+  unsigned long* bucket2;
+  int i, k, numDiffs, numMatches, haveVal;
+  unsigned long v1, v2;
+  int hits[20], h;  
+  int array[32][64];   // numDiffs by word size
+  int tav;	       // total average
+  int gav;             // group average
+  int tavmax;      // average of all group maxes
+  int tavmin;      // average of all group mins
+  int tmax;        // total max
+  int tmin;        // total min
+  int gmax;        // per group max
+  int gmin;        // per group min
+
+  for (numMatches = 63; numMatches >= 0; numMatches--) {
+    for (numDiffs = 0; numDiffs < 32; numDiffs++) {
+      array[numDiffs][numMatches] = 0;
+    }
+  }
+
+  bucket1 = (unsigned long*) calloc(bucketSize, sizeof(unsigned long));
+  bucket2 = (unsigned long*) calloc(bucketSize, sizeof(unsigned long));
+
+  if (detail == 2) {
+    printf("numDiff, av , min, max, B%d, W%d, S%d, D%d\n ", bucketSize, window, spread, numDiffs);
+  }
+  for (numDiffs = 0; numDiffs < 32; numDiffs++) {
+    tav = 0;
+    tavmax = 0;
+    tavmin = 0;
+    tmax = 0;
+    tmin = 10000;
+    for (h = 0; h < 20; hits[h++] = 0);
+    for (k = 0; k < numGroups; k++) {
+      gav = 0;
+      gmax = 0;
+      gmin = 10000;
+      for (i = 0; i < numSamples; i++) {
+        makeInitBucket(bucket1, bucketSize);
+        makeInitBucket(bucket2, bucketSize);
+        makeCompareBucketFixed(bucket1, bucket2, bucketSize, numDiffs);
+        qsort(bucket1, bucketSize, sizeof(unsigned long), cmpfunc);
+        qsort(bucket2, bucketSize, sizeof(unsigned long), cmpfunc);
+        makeVectors(&v1, &v2, bucket1, bucket2, bucketSize);
+        numMatches = doDiffv1(window, spread, v1, v2);
+        h = (64-window+1) - numMatches;
+        if (h < 0) {
+          printf("ERROR: h < 0\n");
+          exit(1);
+        }
+        for (; h < 20; hits[h++]++);
+        if (detail) {printf("%d, %d, %lx, %lx\n", numDiffs, numMatches, v1, v2);}
+        array[numDiffs][numMatches]++;
+        gav += numMatches;
+        gmin = numMatches<gmin?numMatches:gmin;
+        gmax = numMatches>gmax?numMatches:gmax;
+        tav += numMatches;
+        tmin = numMatches<tmin?numMatches:tmin;
+        tmax = numMatches>tmax?numMatches:tmax;
+      }
+      if (detail == 2) {
+        printf("%d, %.2f, %d, %d\n", numDiffs, (float)gav/(float)numSamples, gmin, gmax);
+      }
+      tavmin += gmin;
+      tavmax += gmax;
+    }
+    if (detail == 0) {
+      printf("B%d, W%d, S%d, D%d: ", bucketSize, window, spread, numDiffs);
+      for (h = 0; h < 20; h += 2) {
+        printf("%d:%.2f, ", h, (float) hits[h] / (float) numSamples);
+      }
+      printf("\n");
+      printf("%d, %.2f, %d, %d\n", numDiffs, (float)tav/(float)(numGroups*numSamples), tmin, tmax);
+    }
+  }
+  if (detail == 0) {
+    for (numMatches = 63; numMatches >= 0; numMatches--) {
+      haveVal = 0;
+      for (numDiffs = 0; numDiffs < 32; numDiffs++) {
+        if (array[numDiffs][numMatches] != 0) {
+          haveVal = 1;
+          break;
+        }
+      }
+      if (haveVal) {
+        printf("%d Matches: ", numMatches);
+        for (numDiffs = 0; numDiffs < 32; numDiffs++) {
+          if (array[numDiffs][numMatches] != 0) {
+            printf("%d:%d, ", numDiffs, array[numDiffs][numMatches]);
+          }
+        }
+        printf("\n");
+      }
+    }
+  }
+  free(bucket1);
+  free(bucket2);
+  if (detail == 0) { printf("--------------------------------\n"); }
 }
 
 main() 
 {
   // runCorrectnessTests();
   // runSpeedTests();
-  runCallibrationTest();
+
+  srand48((long int) 1);
+
+  // runCallibrationTestRandom(1000, 6, 2, 100, 0);
+  // runCallibrationTestRandom(1000, 6, 4, 100, 0);
+  // runCallibrationTestRandom(1000, 8, 2, 100, 0);
+  // runCallibrationTestRandom(1000, 8, 6, 100, 0);
+  // runCallibrationTestRandom(1000, 50, 6, 100, 0);
+  // runCallibrationTestFixed(64, 5, 2, 100, 20, 0);
+  runCallibrationTestFixed(64, 6, 2, 100, 20, 0);
+  // runCallibrationTestFixed(64, 6, 4, 100, 20, 0);
+  // runCallibrationTestFixed(64, 8, 2, 100, 20, 0);
+  // runCallibrationTestFixed(64, 8, 6, 100, 20, 0);
+  // runCallibrationTestFixed(64, 40, 6, 100, 20, 0);
 }
