@@ -40,8 +40,10 @@ typedef struct bucket_t {
 
 typedef struct compare_t {
   int common;		// bits common between both filters
-  int first;		// bits the first filter has that the second doesn't
-  int second;		// vice versa
+  int first;		// total bits the first filter has
+  int second;		// total bits the second filter has
   int numFirst;		// number of entries in first bucket
   int numSecond;	// number of entries in second bucket
+  int level;		// the level used for the comparison
+			// 0 means no comparison made
 } compare;
