@@ -3,6 +3,10 @@
 #include <time.h>
 #include <string.h>
 
+// externs needed to keep compiler from warning
+extern bucket *makeRandomBucket(int arg1);
+extern bucket *makeBucket(int arg1);
+
 /* 
  * Finds 1) the number of bit positions in common between the
  * two filters, and the unique bits of the first and second
@@ -25,25 +29,51 @@ compareFilterPair(one_filter *of1, one_filter *of2, compare *c)
 /* 
  * Returns 1 if a pair of filters with matching level were
  * found.  Else returns 0.  (Note that we are returning the
- * lowest pair of levels, but this might not necessarily be
+ * highest pair of levels, but this might not necessarily be
  * optimal.)
  */
-int
-compareFullFilters(filter *f1, filter *f2, compare *c)
+compareFullFilters(bucket *bp1, bucket *bp2, compare *c)
 {
   int i, j;
-  int match = 0;
+  int save_i=0, save_j=0, firstTime=1;
+  int high, low, temp;
 
+  c->level = 0;    // indicates that no comparison was made
+  c->numFirst = bp1->bsize;
+  c->numSecond = bp2->bsize;
   for (i = 0; i < FILTERS_PER_BUCKET; i++) {
     for (j = 0; j < FILTERS_PER_BUCKET; j++) {
-      if (f1->filters[i].level == f2->filters[j].level) {
-        match = 1;
-        compareFilterPair(&(f1->filters[i]), &(f2->filters[j]), c);
-        return(1);
+      if (bp1->filters[i].level == bp2->filters[j].level) {
+        if (bp1->filters[i].level == 0) {goto done;}
+        // Ideally, the largest user count is between 100 and 500
+        // This avoids excessive set bits due to simply large numbers
+        // (should consider avoiding this by having a 4th filter????)
+        high = bp1->bsize >> ((bp1->filters[i].level * 2) - 2);
+        low = bp2->bsize >> ((bp2->filters[j].level * 2) - 2);
+        if (low > high) {
+          temp = low;
+          low = high;
+          high = temp;
+        }
+        if (firstTime == 1) {
+          firstTime = 0;
+          save_i = i;
+          save_j = j;
+          if ((high >= 100) && (high <= 500) && (low >= 32)) {goto done;}
+        }
+        else if ((high >= 100) && (high <= 500) && (low >= 32)) {
+          save_i = i;
+          save_j = j;
+          goto done;
+        }
       }
     }
   }
-  return(0);
+done:
+  if (firstTime == 0) {
+    c->level = bp1->filters[save_i].level;
+    compareFilterPair(&(bp1->filters[save_i]), &(bp2->filters[save_j]), c);
+  }
 }
 
 initFilter(one_filter *of)
@@ -160,7 +190,7 @@ test_makeFilterFromBucket()
   uint64_t *lp;
   int retval = 0;
 
-  bp = (bucket *) makeBucket(32);
+  bp = makeBucket(32);
   lp = bp->list;
   id = 0;
   for (j = 0; j < bp->bsize; j++) {
@@ -177,7 +207,7 @@ test_makeFilterFromBucket()
   }
   freeBucket(bp);
 
-  bp = (bucket *) makeBucket(32);
+  bp = makeBucket(32);
   lp = bp->list;
   id = 0;
   for (j = 0; j < bp->bsize; j++) {
@@ -197,7 +227,7 @@ test_makeFilterFromBucket()
   }
   freeBucket(bp);
 
-  bp = (bucket *) makeBucket(32);
+  bp = makeBucket(32);
   lp = bp->list;
   id = 0x8000000000000000;
   for (j = 0; j < bp->bsize; j++) {
@@ -217,7 +247,7 @@ test_makeFilterFromBucket()
   }
   freeBucket(bp);
 
-  bp = (bucket *) makeBucket(210);
+  bp = makeBucket(210);
   lp = bp->list;
   id = 0x8000000000000000;
   for (j = 0; j < bp->bsize; j++) {
@@ -247,7 +277,7 @@ test_makeFilterFromBucket()
   freeBucket(bp);
 
 
-  bp = (bucket *) makeBucket(210);
+  bp = makeBucket(210);
   lp = bp->list;
   id = 0x2000000000000000;
   for (j = 0; j < bp->bsize; j++) {
@@ -286,7 +316,7 @@ oneSetLevelsTest(int bucketSize, int l0, int l1, int l2, unsigned char *test)
   bucket *bp;
   int retval = 0;
 
-  bp = (bucket *) makeRandomBucket(bucketSize);
+  bp = makeRandomBucket(bucketSize);
   setLevelsBasedOnBucketSize(bp);
   if ((bp->filters[0].level != l0) || 
       (bp->filters[1].level != l1) ||

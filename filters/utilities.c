@@ -1,6 +1,50 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
+#include "./utilities.h"
 #include "./filters.h"
+
+int
+getRandBucketSize(min_size, max_size)
+{
+  float frac = (float) (max_size-min_size) / (float) 0x7fffffff;
+
+  return(min_size + (int) ((float) lrand48() * frac));
+}
+
+printStats(unsigned char *str, mystats *s, int header)
+{
+  if (header) {
+    printf("\n| Total | Av | SD | Min | Max | Desc |\n");
+    printf("| --- | --- | --- | --- | --- | --- |\n");
+  }
+  printf("| %d | %.2f | %.2f | %.2f | %.2f | %s |\n",
+      s->total, s->av, s->sd, s->min, s->max, str);
+}
+
+getStats(mystats *s, float *x, int n)
+{
+  int  i;
+  float sum = 0, sum1 = 0;
+
+  s->total = n;
+  s->min = 100000000000.0;
+  s->max = 0.0;
+  for (i = 0; i < n; i++)
+  {
+    sum = sum + x[i];
+  }
+  s->av = sum / (float)n;
+  /* Compute variance and standard deviation */
+  for (i = 0; i < n; i++)
+  {
+    sum1 = sum1 + pow((x[i] - s->av), 2);
+    s->min = (x[i] < s->min)?x[i]:s->min;
+    s->max = (x[i] > s->max)?x[i]:s->max;
+  }
+  s->var = sum1 / (float)n;
+  s->sd = sqrt(s->var);
+}
 
 /* 
  * Allocates memory for a bucket of size bsize.
@@ -22,6 +66,44 @@ makeBucket(int bsize)
 
   return(bp);
 }
+
+bucket *
+dupBucket(bucket *from)
+{
+  int i;
+  bucket *bp;
+  uint64_t *lfrom, *lp;
+
+  bp = makeBucket(from->bsize);
+  lp = bp->list;
+  lfrom = from->list;
+
+  for (i = 0; i < from->bsize; i++) {
+    *lp = *lfrom;
+    lp++;  lfrom++;
+  }
+  return(bp);
+}
+
+/* 
+ * causes the two buckets to have numMatches identical entries
+ */
+makeCompareBucketFixed(bucket* bp1, bucket* bp2, int numMatches) {
+  int i;
+  uint64_t *lp1, *lp2;
+
+  if (numMatches > bp1->bsize) {numMatches = bp1->bsize;}
+  if (numMatches > bp2->bsize) {numMatches = bp2->bsize;}
+  
+  lp1 = bp1->list;
+  lp2 = bp2->list;
+  for (i = 0; i < numMatches; i++) {
+    *lp2 = *lp1;
+    lp1++;
+    lp2++;
+  }
+}
+
 
 uint64_t
 myRand64()
