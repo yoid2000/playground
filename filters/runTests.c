@@ -7,9 +7,118 @@
 // externs need to keep compiler from warning
 extern bucket *makeRandomBucket(int arg1);
 extern bucket *dupBucket(bucket *arg1);
+extern float myskew();
+
+#define DISCRETE_OVERLAP 1
+#define CONTINUOUS_OVERLAP 2
+testFilterInterpretation2(int numSamples, int overlapType)
+{
+  bucket *bp1, *bp2;
+  compare c;
+  float *oo, *os, *zo, *zz;
+  float skew;
+  mystats ooS, zzS, zoS, osS;
+  int bsize1, bsize2, i, j, sizeRatio, overlap;
+  FILE *foo, *fzo, *fzz;
+  unsigned char fileloc[128];
+
+  oo = (float *) calloc(numSamples, sizeof(float));
+  os = (float *) calloc(numSamples, sizeof(float));
+  zo = (float *) calloc(numSamples, sizeof(float));
+  zz = (float *) calloc(numSamples, sizeof(float));
+
+  sprintf(fileloc, "/home/francis/gnuplot/filterInterpret/oo-all.%d.data", 
+          numSamples);
+  foo = fopen(fileloc, "w");
+  fprintf(foo, "# bsize1, bsize2, overlap, sizeRatio, 1:*, 1:1, \n");
+  fprintf(foo, "# Overlap: 1 = none, 2 = 1/4, 3 = 1/2, 4 = complete\n");
+  fprintf(foo, "# SizeRatio: 1 = same size (1/1), 10 = 1/10\n");
+  sprintf(fileloc, "/home/francis/gnuplot/filterInterpret/zo-all.%d.data", 
+          numSamples);
+  fzo = fopen(fileloc, "w");
+  fprintf(fzo, "# bsize1, bsize2, overlap, sizeRatio, 1:*, 0:1, \n");
+  fprintf(fzo, "# Overlap: 1 = none, 2 = 1/4, 3 = 1/2, 4 = complete\n");
+  fprintf(fzo, "# SizeRatio: 1 = same size (1/1), 10 = 1/10\n");
+  sprintf(fileloc, "/home/francis/gnuplot/filterInterpret/zz-all.%d.data", 
+          numSamples);
+  fzz = fopen(fileloc, "w");
+  fprintf(fzz, "# bsize1, bsize2, overlap, sizeRatio, 1:*, 0:0, \n");
+  fprintf(fzz, "# Overlap: 1 = none, 2 = 1/4, 3 = 1/2, 4 = complete\n");
+  fprintf(fzz, "# SizeRatio: 1 = same size (1/1), 10 = 1/10\n");
+
+  for (i = 0; i < 1000000; i++) {
+    bsize1 = getRandInteger(32, 2000);
+    sizeRatio = getRandInteger(1,10);
+    bsize2 = bsize1 * sizeRatio;
+    if (overlapType == DISCRETE_OVERLAP) {
+      overlap = getRandInteger(1,4);
+    }
+    else {
+      overlap = getRandInteger(1,100);
+    }
+
+    for (j = 0; j < numSamples; j++) {
+      bp1 = makeRandomBucket(bsize1);
+      bp2 = makeRandomBucket(bsize2);
+
+      if (overlapType == DISCRETE_OVERLAP) {
+        switch (overlap) { 
+          case 1:
+            // do nothing, no overlap
+            break;
+          case 2:
+            makeCompareBucketFixed(bp1, bp2, bsize1>>2);
+            break;
+          case 3:
+            makeCompareBucketFixed(bp1, bp2, bsize1>>1);
+            break;
+          case 4:
+            makeCompareBucketFixed(bp1, bp2, bsize1);  // complete overlap
+            break;
+        }
+      } 
+      else {
+        makeCompareBucketFixed(bp1, bp2, 
+                  (int) ((float) (bsize1 * overlap) / (float) 100.0));
+      }
+
+      makeFilterFromBucket(bp1);
+      makeFilterFromBucket(bp2);
+      compareFullFilters(bp1, bp2, &c);
+      skew = (numSamples == 1)?myskew():0.0;
+      oo[j] = (float) c.common + skew;
+      os[j] = (float) c.first + skew;
+      zo[j] = (float) (c.second - c.common) + skew;
+      zz[j] = (float) (1024 + c.common - c.first - c.second) + skew;
+      if (c.level == 0) {  // error reporting
+        printf("sizes %d and %d, levels %d and %d\n", bp1->bsize, bp2->bsize,
+             bp1->filters[0].level, bp2->filters[0].level);
+      }
+      getStats(&ooS, oo, numSamples);
+      getStats(&osS, os, numSamples);
+      getStats(&zoS, zo, numSamples);
+      getStats(&zzS, zz, numSamples);
+      freeBucket(bp1);
+      freeBucket(bp2);
+    }
+    if ((numSamples == 1) && (ooS.av != ooS.min)) {
+      printf("ERROR: av = %.2f, min = %.2f\n", ooS.av, ooS.min);
+    }
+    fprintf(foo, "%d %d %d %d %.2f %.2f\n", bsize1, bsize2, overlap, sizeRatio,
+                osS.av, ooS.av);
+    fprintf(fzo, "%d %d %d %d %.2f %.2f\n", bsize1, bsize2, overlap, sizeRatio,
+                osS.av, zoS.av);
+    fprintf(fzz, "%d %d %d %d %.2f %.2f\n", bsize1, bsize2, overlap, sizeRatio,
+                osS.av, zzS.av);
+  }
+  fclose(foo);
+  fclose(fzo);
+  fclose(fzz);
+  free(oo); free(os); free(zo); free(zz);
+}
 
 #define NUM_SAMPLES 20
-testFilterInterpretation()
+testFilterInterpretation1(unsigned char *filename, int shift)
 {
   float oo[NUM_SAMPLES];	//  1:1
   float zz[NUM_SAMPLES];	//  0:0
@@ -18,23 +127,24 @@ testFilterInterpretation()
   mystats ooS, zzS, zoS, osS;
   bucket *bp1, *bp2;
   compare c;
-  int bsize1, bsize2, i;
+  int bsize1, bsize2, i, overlap;
   FILE *fdata;
-  unsigned char fileloc[128], filename[128];
+  unsigned char fileloc[128];
 
-  for (bsize1 = 32; bsize1 < 1025; bsize1 *= 2) {
-    sprintf(fileloc, "%s", "/home/francis/gnuplot/filterInterpret/");
-    sprintf(filename, "%d.data", bsize1);
-    strcat(&(fileloc[0]), filename);
+  for (overlap = 0; overlap < 3; overlap++) {
+    sprintf(fileloc, "%s%s.%d.data", "/home/francis/gnuplot/filterInterpret/",
+        filename, overlap);
     if ((fdata = fopen(fileloc, "w")) == NULL) {
       printf("fopen failed (%s, %s)\n", fileloc, filename); exit(1);
     }
     fprintf(fdata, "# Exclusive buckets\n");
     fprintf(fdata, "# bsize1, bsize2, 1:*, (2sd), 1:1, (2sd), 0:0, (2sd), 0:1, (2sd)\n");
-    for (bsize2 = 32; bsize2 < 1025; bsize2 += 32) {
+    for (bsize1 = 32; bsize1 < 1025; bsize1 += 32) {
       for (i = 0; i < NUM_SAMPLES; i++) {
         bp1 = makeRandomBucket(bsize1);
+        bsize2 = bsize1<<shift;
         bp2 = makeRandomBucket(bsize2);
+        makeCompareBucketFixed(bp1, bp2, bsize1-(bsize1>>overlap));
         makeFilterFromBucket(bp1);
         makeFilterFromBucket(bp2);
         compareFullFilters(bp1, bp2, &c);
@@ -126,7 +236,7 @@ testMatchingBuckets(int type)
     switch(type) {
       case EXACT:
         test = "Exact Match";
-        bsize1 = getRandBucketSize(32, 10000);
+        bsize1 = getRandInteger(32, 10000);
         bsize2 = bsize1;
         bp1 = makeRandomBucket(bsize1);
         bp2 = dupBucket(bp1);
@@ -174,14 +284,14 @@ testMatchingBuckets(int type)
       case EXCLUSIVE_SAME:
         test = "Exclusive Match, Same Bucket Size";
         // Assume enough randomness that collisions never happen
-        bsize1 = getRandBucketSize(32, 10000);
+        bsize1 = getRandInteger(32, 10000);
         bsize2 = bsize1;
         bp1 = makeRandomBucket(bsize1);
         bp2 = makeRandomBucket(bsize2);
         break;
       case HALF_OVERLAP_SAME:
         test = "Half Overlap, Same Bucket Size";
-        bsize1 = getRandBucketSize(32, 10000);
+        bsize1 = getRandInteger(32, 10000);
         bsize2 = bsize1;
         bp1 = makeRandomBucket(bsize1);
         bp2 = makeRandomBucket(bsize2);
@@ -189,7 +299,7 @@ testMatchingBuckets(int type)
         break;
       case QUARTER_OVERLAP_SAME:
         test = "Quarter Overlap, Same Bucket Size";
-        bsize1 = getRandBucketSize(32, 10000);
+        bsize1 = getRandInteger(32, 10000);
         bsize2 = bsize1;
         bp1 = makeRandomBucket(bsize1);
         bp2 = makeRandomBucket(bsize2);
@@ -197,7 +307,7 @@ testMatchingBuckets(int type)
         break;
       case EIGHTH_OVERLAP_SAME:
         test = "Quarter Overlap, Same Bucket Size";
-        bsize1 = getRandBucketSize(32, 10000);
+        bsize1 = getRandInteger(32, 10000);
         bsize2 = bsize1;
         bp1 = makeRandomBucket(bsize1);
         bp2 = makeRandomBucket(bsize2);
@@ -206,8 +316,8 @@ testMatchingBuckets(int type)
       case EXCLUSIVE_VARY:
         test = "Exclusive Match, Vary Bucket Size";
         // Assume enough randomness that collisions never happen
-        bsize1 = getRandBucketSize(200, 5000);
-        bsize2 = getRandBucketSize(200, 5000);
+        bsize1 = getRandInteger(200, 5000);
+        bsize2 = getRandInteger(200, 5000);
         if (bsize1 > bsize2) {
           temp = bsize1;
           bsize1 = bsize2;
@@ -274,5 +384,10 @@ main()
   // testMatchingBuckets(HALF_OVERLAP_SAME);
   // testMatchingBuckets(QUARTER_OVERLAP_SAME);
   // testMatchingBuckets(EIGHTH_OVERLAP_SAME);
-  testFilterInterpretation();
+  // testFilterInterpretation1("match", 0);
+  // testFilterInterpretation1("half", 1);
+  // testFilterInterpretation1("quarter", 2);
+  // testFilterInterpretation2(1, DISCRETE_OVERLAP);
+  // testFilterInterpretation2(20, DISCRETE_OVERLAP);
+  testFilterInterpretation2(1, CONTINUOUS_OVERLAP);
 }

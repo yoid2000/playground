@@ -5,11 +5,38 @@
 #include "./filters.h"
 
 int
-getRandBucketSize(min_size, max_size)
+getRandInteger(int min_size, int max_size)
 {
-  float frac = (float) (max_size-min_size) / (float) 0x7fffffff;
+  int ret;
 
-  return(min_size + (int) ((float) lrand48() * frac));
+  float frac = (float) (max_size+1-min_size) / (float) 0x7fffffff;
+
+  ret = (min_size + (int) ((float) lrand48() * frac));
+  if (ret < min_size) {
+    printf("ERROR: bad getRandInteger, %d less than min %d\n", ret, min_size);
+    ret = min_size;
+  }
+  if (ret > max_size) {
+    printf("ERROR: bad getRandInteger, %d greater than max %d\n", ret, max_size);
+    ret = max_size;
+  }
+  return(ret);
+}
+
+/*
+ * This routine returns a random number between -0.25 and 0.25.
+ * It is used for scatter plots to prevent identical points from
+ * obscuring each other.
+ */
+float
+myskew()
+{
+  float ran;
+
+  ran = (float)drand48();
+  ran /= (float) 2.0;
+  ran -= (float) 0.25;
+  return(ran);
 }
 
 printStats(unsigned char *str, mystats *s, int header)
