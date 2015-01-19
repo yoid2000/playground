@@ -9,43 +9,49 @@ extern bucket *makeRandomBucket(int arg1);
 extern bucket *dupBucket(bucket *arg1);
 extern float getRandFloat(float arg1, float arg2);
 
-#define MAX_SAMPLES 32
+#define MAX_SAMPLES 16
 typedef struct mysamples_t {
   unsigned char samples[MAX_SAMPLES]; 
 } mysamples;
 
+#define NUM_LEVELS 4
 // Put these here (global) cause won't go on stack...
-mysamples values[512][512];
-mysamples bsize1Samples[512][512];
-mysamples levelSamples[512][512];
-unsigned char indices[512][512];
+mysamples values[NUM_LEVELS][512][512];	// level 1
+mysamples bsize1Samples[NUM_LEVELS][512][512];
+mysamples levelSamples[NUM_LEVELS][512][512];
+unsigned char indices[NUM_LEVELS][512][512];
 
 computeOverlapValues(int maxBucketSize)
 {
   bucket *bp1, *bp2;
   compare c;
-  int bsize1, bsize2, i, j, overlap, index;
+  int bsize1, bsize2, i, j, k, overlap, index;
   int numFullEntries = 0;
   int numNoLevel = 0;
   int outOfBounds = 0;
-  FILE *foo;
+  int levelTooHigh = 0;
+  FILE *foo[NUM_LEVELS];
   unsigned char fileloc[128];
   float sizeRatio;
-  mystats valuesS, bsize1S, levelS;
+  mystats valuesS[NUM_LEVELS], bsize1S[NUM_LEVELS], levelS[NUM_LEVELS];
 
 
   for (i = 0; i < 512; i++) {
     for (j = 0; j < 512; j++) {
-      indices[i][j] = 0;
+      for (k = 0; k < NUM_LEVELS; k++) {
+      indices[k][i][j] = 0;
+      }
     }
   }
 
-  sprintf(fileloc, "/home/francis/gnuplot/computeOverlap/%d.data",
-    maxBucketSize);
-  foo = fopen(fileloc, "w");
-  fprintf(foo, "# numFirst numCommon numSamples overlap_av overlap_sd bsize1_sd level_sd\n");
+  for (k = 0; k < NUM_LEVELS; k++) {
+    sprintf(fileloc, "/home/francis/gnuplot/computeOverlap/%d.%d.data",
+      k+1, maxBucketSize);
+    foo[k] = fopen(fileloc, "w");
+    fprintf(foo[k], "# numFirst numCommon numSamples overlap_av overlap_sd bsize1_sd level_sd overlap_min overlap_max\n");
+  }
 
-  for (i = 0; i < 10000000; i++) {
+  for (i = 0; i < 1000000; i++) {
     bsize1 = getRandInteger(32, maxBucketSize);
     sizeRatio = getRandFloat((float)1.0,(float)16.0);
     bsize2 = (int) ((float) bsize1 * sizeRatio);
@@ -63,18 +69,22 @@ computeOverlapValues(int maxBucketSize)
     if (c.level == 0) {  // error reporting
       numNoLevel++;
     }
-
-    if ((c.first >= 512) || (c.common >= 512)) {
+    else if ((c.first >= 512) || (c.common >= 512)) {
       outOfBounds++;
     }
-    else if ((index = indices[c.first][c.common]) >= MAX_SAMPLES) {
-      numFullEntries++;
+    else if ((c.level-1) > 3) {
+      levelTooHigh++;
     }
     else {
-      values[c.first][c.common].samples[index] = overlap;
-      bsize1Samples[c.first][c.common].samples[index] = bsize1;
-      levelSamples[c.first][c.common].samples[index] = c.level;
-      indices[c.first][c.common]++;
+      if ((index = indices[c.level-1][c.first][c.common]) >= MAX_SAMPLES) {
+        numFullEntries++;
+      }
+      else {
+        values[c.level-1][c.first][c.common].samples[index] = overlap;
+        bsize1Samples[c.level-1][c.first][c.common].samples[index] = bsize1;
+        levelSamples[c.level-1][c.first][c.common].samples[index] = c.level;
+        indices[c.level-1][c.first][c.common]++;
+      }
     }
     freeBucket(bp1);
     freeBucket(bp2);
@@ -82,22 +92,26 @@ computeOverlapValues(int maxBucketSize)
 
   for (i = 0; i < 512; i++) {
     for (j = 0; j < 512; j++) {
-      if (indices[i][j] > 0) {
-        getStatsChar(&valuesS, 
-             values[i][j].samples, indices[i][j]);
-        getStatsChar(&bsize1S, 
-             bsize1Samples[i][j].samples, indices[i][j]);
-        getStatsChar(&levelS, 
-             levelSamples[i][j].samples, indices[i][j]);
-        fprintf(foo, "%d %d %d %.2f %.2f %.2f %.2f\n",
-               i, j, indices[i][j], valuesS.av, valuesS.sd,
-               bsize1S.sd, levelS.sd);
+      for (k = 0; k < NUM_LEVELS; k++) {
+        if (indices[k][i][j] > 0) {
+          getStatsChar(&valuesS[k], 
+               values[k][i][j].samples, indices[k][i][j]);
+          getStatsChar(&bsize1S[k], 
+               bsize1Samples[k][i][j].samples, indices[k][i][j]);
+          getStatsChar(&levelS[k], 
+               levelSamples[k][i][j].samples, indices[k][i][j]);
+          fprintf(foo[k], "%d %d %d %.2f %.2f %.2f %.2f %.2f %.2f\n",
+                 i, j, indices[k][i][j], valuesS[k].av, valuesS[k].sd,
+                 bsize1S[k].sd, levelS[k].sd, valuesS[k].min, valuesS[k].max);
+        }
       }
     }
   }
-    printf("%d full entries, %d no level, %d out of bounds\n", 
-           numFullEntries, numNoLevel, outOfBounds);
-  fclose(foo);
+  printf("%d full entries, %d no level, %d out of bounds, %d level too high\n", 
+           numFullEntries, numNoLevel, outOfBounds, levelTooHigh);
+  for (k = 0; i < NUM_LEVELS; k++) {
+    fclose(foo[k]);
+  }
 }
 
 #define DISCRETE_OVERLAP 1
@@ -503,6 +517,6 @@ main()
   //printf("done 10000\n");
   //computeOverlapValues(128);
   computeOverlapValues(1000);
-  //computeOverlapValues(5000);
-  computeOverlapValues(10000);
+  computeOverlapValues(5000);
+  //computeOverlapValues(10000);
 }
