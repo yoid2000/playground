@@ -23,6 +23,16 @@ getRandInteger(int min_size, int max_size)
   return(ret);
 }
 
+float
+getRandFloat(float min, float max)
+{
+  float ran;
+  ran = (float)drand48();
+  ran *= (max - min);
+  ran += min;
+  return(ran);
+}
+
 /*
  * This routine returns a random number between -0.25 and 0.25.
  * It is used for scatter plots to prevent identical points from
@@ -49,7 +59,7 @@ printStats(unsigned char *str, mystats *s, int header)
       s->total, s->av, s->sd, s->min, s->max, str);
 }
 
-getStats(mystats *s, float *x, int n)
+getStatsFloat(mystats *s, float *x, int n)
 {
   int  i;
   float sum = 0, sum1 = 0;
@@ -68,6 +78,30 @@ getStats(mystats *s, float *x, int n)
     sum1 = sum1 + pow((x[i] - s->av), 2);
     s->min = (x[i] < s->min)?x[i]:s->min;
     s->max = (x[i] > s->max)?x[i]:s->max;
+  }
+  s->var = sum1 / (float)n;
+  s->sd = sqrt(s->var);
+}
+
+getStatsChar(mystats *s, unsigned char *x, int n)
+{
+  int  i;
+  float sum = 0, sum1 = 0;
+
+  s->total = n;
+  s->min = (float) 100000000000.0;
+  s->max = (float) 0.0;
+  for (i = 0; i < n; i++)
+  {
+    sum = sum + (float) x[i];
+  }
+  s->av = sum / (float)n;
+  /* Compute variance and standard deviation */
+  for (i = 0; i < n; i++)
+  {
+    sum1 = sum1 + pow(((float)x[i] - s->av), 2);
+    s->min = ((float)x[i] < s->min)?(float)x[i]:s->min;
+    s->max = ((float)x[i] > s->max)?(float)x[i]:s->max;
   }
   s->var = sum1 / (float)n;
   s->sd = sqrt(s->var);
