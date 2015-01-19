@@ -17,12 +17,13 @@ extern bucket *makeBucket(int arg1);
 compareFilterPair(one_filter *of1, one_filter *of2, compare *c)
 {
   unsigned int i;
+  uint64_t anded;
 
   c->common = 0;  c->first = 0; c->second = 0;
   for (i = 0; i < FILTER_LEN; i++) {
     c->first += __builtin_popcountll(of1->filter[i]);
     c->second += __builtin_popcountll(of2->filter[i]);
-    c->common += __builtin_popcountll((of1->filter[i] & of2->filter[i]));
+    c->common += __builtin_popcountll(of1->filter[i] & of2->filter[i]);
   }
 }
 
@@ -45,7 +46,7 @@ compareFullFilters(bucket *bp1, bucket *bp2, compare *c)
     for (j = 0; j < FILTERS_PER_BUCKET; j++) {
       if (bp1->filters[i].level == bp2->filters[j].level) {
         if (bp1->filters[i].level == 0) {goto done;}
-        // Ideally, the largest user count is between 100 and 500
+        // Ideally, the largest user count is between 100 and 600
         // This avoids excessive set bits due to simply large numbers
         // (should consider avoiding this by having a 4th filter????)
         high = bp1->bsize >> ((bp1->filters[i].level * 2) - 2);
@@ -59,9 +60,9 @@ compareFullFilters(bucket *bp1, bucket *bp2, compare *c)
           firstTime = 0;
           save_i = i;
           save_j = j;
-          if ((high >= 100) && (high <= 500) && (low >= 32)) {goto done;}
+          if ((high >= 100) && (high <= 600) && (low >= 32)) {goto done;}
         }
-        else if ((high >= 100) && (high <= 500) && (low >= 32)) {
+        else if ((high >= 100) && (high <= 600) && (low >= 32)) {
           save_i = i;
           save_j = j;
           goto done;
