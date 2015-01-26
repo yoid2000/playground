@@ -60,9 +60,9 @@ compareFullFilters(bucket *bp1, bucket *bp2, compare *c)
           firstTime = 0;
           save_i = i;
           save_j = j;
-          if ((high >= 100) && (high <= 600) && (low >= 32)) {goto done;}
+          if ((high >= 300) && (high <= 800) && (low >= 100)) {goto done;}
         }
-        else if ((high >= 100) && (high <= 600) && (low >= 32)) {
+        else if ((high >= 300) && (high <= 800) && (low >= 100)) {
           save_i = i;
           save_j = j;
           goto done;
@@ -73,6 +73,8 @@ compareFullFilters(bucket *bp1, bucket *bp2, compare *c)
 done:
   if (firstTime == 0) {
     c->level = bp1->filters[save_i].level;
+    c->index1 = save_i;
+    c->index2 = save_j;
     compareFilterPair(&(bp1->filters[save_i]), &(bp2->filters[save_j]), c);
   }
 }
