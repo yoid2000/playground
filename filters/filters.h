@@ -46,4 +46,6 @@ typedef struct compare_t {
   int numSecond;	// number of entries in second bucket
   int level;		// the level used for the comparison
 			// 0 means no comparison made
+  int index1;
+  int index2;
 } compare;

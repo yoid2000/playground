@@ -1,10 +1,11 @@
-#include <stdio.h>
+
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include "./utilities.h"
 #include "./filters.h"
 
-// externs need to keep compiler from warning
+// externs needed to keep compiler from warning
 extern bucket *makeRandomBucket(int arg1);
 extern bucket *dupBucket(bucket *arg1);
 extern float getRandFloat(float arg1, float arg2);
@@ -14,12 +15,13 @@ typedef struct mysamples_t {
   unsigned char samples[MAX_SAMPLES]; 
 } mysamples;
 
-#define NUM_LEVELS 4
+#define MAX_VALUE 1024
+#define NUM_LEVELS 1
 // Put these here (global) cause won't go on stack...
-mysamples values[NUM_LEVELS][512][512];	// level 1
-mysamples bsize1Samples[NUM_LEVELS][512][512];
-mysamples levelSamples[NUM_LEVELS][512][512];
-unsigned char indices[NUM_LEVELS][512][512];
+mysamples values[NUM_LEVELS][MAX_VALUE][MAX_VALUE];
+mysamples bsize1Samples[NUM_LEVELS][MAX_VALUE][MAX_VALUE];
+mysamples levelSamples[NUM_LEVELS][MAX_VALUE][MAX_VALUE];
+unsigned char indices[NUM_LEVELS][MAX_VALUE][MAX_VALUE];
 
 computeOverlapValues(int maxBucketSize)
 {
@@ -29,38 +31,49 @@ computeOverlapValues(int maxBucketSize)
   int numFullEntries = 0;
   int numNoLevel = 0;
   int outOfBounds = 0;
-  int levelTooHigh = 0;
-  FILE *foo[NUM_LEVELS];
+  int diffLevel;
+  int absNumOverlap, badOverlap = 0;
+  FILE *foo[NUM_LEVELS], *scatter;
   unsigned char fileloc[128];
-  float sizeRatio;
+  float sizeRatio, skew;
   mystats valuesS[NUM_LEVELS], bsize1S[NUM_LEVELS], levelS[NUM_LEVELS];
 
 
-  for (i = 0; i < 512; i++) {
-    for (j = 0; j < 512; j++) {
+  for (i = 0; i < MAX_VALUE; i++) {
+    for (j = 0; j < MAX_VALUE; j++) {
       for (k = 0; k < NUM_LEVELS; k++) {
       indices[k][i][j] = 0;
       }
     }
   }
 
+  sprintf(fileloc, "/home/francis/gnuplot/computeOverlap/scatter.%d.data",
+      maxBucketSize);
+  scatter = fopen(fileloc, "w");
+  fprintf(scatter, "# bsize1 bsize2 numFirst numSecond level 0:1 1:1 0:0 sizeRatio overlap\n");
   for (k = 0; k < NUM_LEVELS; k++) {
     sprintf(fileloc, "/home/francis/gnuplot/computeOverlap/%d.%d.data",
-      k+1, maxBucketSize);
+      k, maxBucketSize);
     foo[k] = fopen(fileloc, "w");
     fprintf(foo[k], "# numFirst numCommon numSamples overlap_av overlap_sd bsize1_sd level_sd overlap_min overlap_max\n");
   }
 
-  for (i = 0; i < 1000000; i++) {
-    bsize1 = getRandInteger(32, maxBucketSize);
+  for (i = 0; i < 10000000; i++) {
+    bsize1 = getRandInteger(2, maxBucketSize);
     sizeRatio = getRandFloat((float)1.0,(float)16.0);
     bsize2 = (int) ((float) bsize1 * sizeRatio);
     overlap = getRandInteger(1,100);
 
     bp1 = makeRandomBucket(bsize1);
     bp2 = makeRandomBucket(bsize2);
-    makeCompareBucketFixed(bp1, bp2, 
-                (int) ((float) (bsize1 * overlap) / (float) 100.0));
+    absNumOverlap = (int) ((float) (bsize1 * overlap) / (float) 100.0);
+    if (absNumOverlap > bsize1) {
+      // should never happen
+      badOverlap++;
+      absNumOverlap = bsize1;
+    }
+    makeCompareBucketFixed(bp1, bp2, absNumOverlap);
+
 
     makeFilterFromBucket(bp1);
     makeFilterFromBucket(bp2);
@@ -69,29 +82,43 @@ computeOverlapValues(int maxBucketSize)
     if (c.level == 0) {  // error reporting
       numNoLevel++;
     }
-    else if ((c.first >= 512) || (c.common >= 512)) {
+    else if ((c.first >= MAX_VALUE) || (c.common >= MAX_VALUE)) {
       outOfBounds++;
     }
-    else if ((c.level-1) > 3) {
-      levelTooHigh++;
-    }
     else {
-      if ((index = indices[c.level-1][c.first][c.common]) >= MAX_SAMPLES) {
+      //diffLevel = c.index1 - c.index2;
+      diffLevel = 0;
+      if ((diffLevel < 0) || (diffLevel >= NUM_LEVELS)) {
+        printf("Error with diffLevel %d\n", diffLevel);
+        exit(1);
+      }
+      if ((index = indices[diffLevel][c.first][c.common]) >= MAX_SAMPLES) {
         numFullEntries++;
       }
       else {
-        values[c.level-1][c.first][c.common].samples[index] = overlap;
-        bsize1Samples[c.level-1][c.first][c.common].samples[index] = bsize1;
-        levelSamples[c.level-1][c.first][c.common].samples[index] = c.level;
-        indices[c.level-1][c.first][c.common]++;
+        values[diffLevel][c.first][c.common].samples[index] = overlap;
+        bsize1Samples[diffLevel][c.first][c.common].samples[index] = bsize1;
+        levelSamples[diffLevel][c.first][c.common].samples[index] = c.level;
+        indices[diffLevel][c.first][c.common]++;
+        if (index < 10) {
+          skew = getRandFloat((float)-0.25, (float) 0.25);
+          fprintf(scatter, "%.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f\n",
+               (float) bsize1 + skew, (float) bsize2 + skew, 
+               (float) c.first + skew, (float) c.second + skew, 
+               (float) c.level + skew,
+               (float) (c.second - c.common) + skew, (float) c.common + skew,
+               (float) (1024 + c.common - c.first - c.second) + skew,
+               ((float) bsize2 / (float) bsize1) + skew, 
+               (float) overlap + skew);
+        }
       }
     }
     freeBucket(bp1);
     freeBucket(bp2);
   }
 
-  for (i = 0; i < 512; i++) {
-    for (j = 0; j < 512; j++) {
+  for (i = 0; i < MAX_VALUE; i++) {
+    for (j = 0; j < MAX_VALUE; j++) {
       for (k = 0; k < NUM_LEVELS; k++) {
         if (indices[k][i][j] > 0) {
           getStatsChar(&valuesS[k], 
@@ -107,8 +134,8 @@ computeOverlapValues(int maxBucketSize)
       }
     }
   }
-  printf("%d full entries, %d no level, %d out of bounds, %d level too high\n", 
-           numFullEntries, numNoLevel, outOfBounds, levelTooHigh);
+  printf("%d full entries, %d no level, %d out of bounds, %d bad overlap compute\n", 
+           numFullEntries, numNoLevel, outOfBounds, badOverlap);
   for (k = 0; i < NUM_LEVELS; k++) {
     fclose(foo[k]);
   }
@@ -516,7 +543,8 @@ main()
   //testFilterInterpretation2(1, CONTINUOUS_OVERLAP, 10000);
   //printf("done 10000\n");
   //computeOverlapValues(128);
-  computeOverlapValues(1000);
-  computeOverlapValues(5000);
-  //computeOverlapValues(10000);
+  //computeOverlapValues(1000);
+  // computeOverlapValues(500);
+  //computeOverlapValues(5000);
+  computeOverlapValues(10000);
 }
