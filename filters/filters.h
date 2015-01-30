@@ -36,16 +36,19 @@ typedef struct bucket_t {
   one_filter filters[FILTERS_PER_BUCKET];
   int bsize;	    // number of entries
   uint64_t *list;   // pointer to first entry
+  int sorted;	    // 1 if the user list has been sorted
 } bucket;
 
 typedef struct compare_t {
   int common;		// bits common between both filters
-  int first;		// total bits the first filter has
-  int second;		// total bits the second filter has
-  int numFirst;		// number of entries in first bucket
-  int numSecond;	// number of entries in second bucket
+  int first;		// total bits the first (smaller) filter has
+  int second;		// total bits the second (larger) filter has
+  int numFirst;		// number of entries in first (smaller) bucket
+  int numSecond;	// number of entries in second (larger) bucket
   int level;		// the level used for the comparison
 			// 0 means no comparison made
   int index1;
   int index2;
+  int overlap;
 } compare;
+
