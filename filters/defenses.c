@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <search.h>
 
 // externs needed to keep compiler from warning
 extern bucket *dupBucket(bucket *arg1);
@@ -13,10 +14,12 @@ bucket **storedFilters;
 int sfIndex; 	// index into above list
 int maxSfIndex;
 
-initDefense(int maxBuckets) {
+initDefense(int maxBuckets, int userListSize) {
   storedFilters = (bucket **) calloc(maxBuckets, sizeof(bucket *));
   sfIndex = 0;
   maxSfIndex = maxBuckets;
+  // this hash table much bigger than needed
+  createHashTable(userListSize);
 }
 
 freeStoredFilters()
@@ -31,6 +34,7 @@ freeStoredFilters()
 
 endDefense() {
   freeStoredFilters();
+  destroyHashTable();
 }
 
 int

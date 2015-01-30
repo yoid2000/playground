@@ -572,7 +572,9 @@ main()
   //computeOverlapValues(5000);
   //computeOverlapValues(10000);
   // test_getNormal();
-  test_combineBuckets();
-  test_getNonOverlap();
+  // test_combineBuckets();
+  // test_getNonOverlap();
   // test_sizesAreClose();
+  test_hsearch();
+  test_highTouch();
 }

@@ -46,6 +46,25 @@ getNormal(float mean, float sd) {
   return(ran);
 }
 
+/*
+ *  Returns 1 if threshold exceeded, 0 otherwise
+ *
+ *  Threshold is considered exceeded if the value + noise
+ *  is greater than the hardThresh, where noise is generated
+ *  according to the standard deviation sd.
+ */
+int
+exceedsNoisyThreshold(float hardThresh, float value, float sd)
+{
+  float noise;
+
+  noise = getNormal(0.0, sd);
+//printf("%.2f\n", noise);
+  if ((value + noise) > hardThresh) { return(1); }
+  else { return(0); }
+}
+
+
 float
 getFixedNormal(uint64_t fix, float mean, float sd) {
   float ran;
