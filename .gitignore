@@ -2,4 +2,5 @@ compare/a.out
 */temp
 compare/*csv
 filters/runTests
+filters/runAttacks
 */*txt

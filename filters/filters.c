@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
+#include "./overlap-values.h"
 
 // externs needed to keep compiler from warning
 extern bucket *makeRandomBucket(int arg1);
@@ -10,7 +11,7 @@ extern bucket *makeBucket(int arg1);
 /* 
  * Finds 1) the number of bit positions in common between the
  * two filters, and the unique bits of the first and second
- * filters.  Happily (enormously) compares two filters of different
+ * filters.  Happily (erroneously) compares two filters of different
  * levels.  Up to calling routing to ensure this doesn't
  * happen.  Never fails.
  */
@@ -28,34 +29,37 @@ compareFilterPair(one_filter *of1, one_filter *of2, compare *c)
 }
 
 /* 
- * Returns 1 if a pair of filters with matching level were
- * found.  Else returns 0.  (Note that we are returning the
- * highest pair of levels, but this might not necessarily be
- * optimal.)
+ * Doesn't matter which bucket is bigger.
  */
 compareFullFilters(bucket *bp1, bucket *bp2, compare *c)
 {
   int i, j;
   int save_i=0, save_j=0, firstTime=1;
-  int high, low, temp;
+  int high, low;
+  bucket *bl, *bs;  // large and small
 
+  // force bp1 to be the smaller bucket
+  if (bp1->bsize > bp2->bsize) {
+    bl = bp1;
+    bs = bp2;
+  }
+  else {
+    bl = bp2;
+    bs = bp1;
+  }
   c->level = 0;    // indicates that no comparison was made
-  c->numFirst = bp1->bsize;
-  c->numSecond = bp2->bsize;
+  c->numFirst = bs->bsize;
+  c->numSecond = bl->bsize;
   for (i = 0; i < FILTERS_PER_BUCKET; i++) {
     for (j = 0; j < FILTERS_PER_BUCKET; j++) {
-      if (bp1->filters[i].level == bp2->filters[j].level) {
-        if (bp1->filters[i].level == 0) {goto done;}
-        // Ideally, the largest user count is between 100 and 600
+      if (bs->filters[i].level == bl->filters[j].level) {
+        if (bs->filters[i].level == 0) {goto done;}
+        // Ideally, the largest user count is between 300 and 800,
+        // and the smallest is least 100.
         // This avoids excessive set bits due to simply large numbers
         // (should consider avoiding this by having a 4th filter????)
-        high = bp1->bsize >> ((bp1->filters[i].level * 2) - 2);
-        low = bp2->bsize >> ((bp2->filters[j].level * 2) - 2);
-        if (low > high) {
-          temp = low;
-          low = high;
-          high = temp;
-        }
+        low = bs->bsize >> ((bs->filters[i].level * 2) - 2);
+        high = bl->bsize >> ((bl->filters[j].level * 2) - 2);
         if (firstTime == 1) {
           firstTime = 0;
           save_i = i;
@@ -72,10 +76,17 @@ compareFullFilters(bucket *bp1, bucket *bp2, compare *c)
   }
 done:
   if (firstTime == 0) {
-    c->level = bp1->filters[save_i].level;
+    c->level = bs->filters[save_i].level;
     c->index1 = save_i;
     c->index2 = save_j;
-    compareFilterPair(&(bp1->filters[save_i]), &(bp2->filters[save_j]), c);
+    compareFilterPair(&(bs->filters[save_i]), &(bl->filters[save_j]), c);
+    if ((i = c->first) >= 800) {
+      i = 799;
+    }
+    if ((j = (c->first - c->common)) >= 256) {
+      j = 255;
+    }
+    c->overlap = overlap_array[i][j];
   }
 }
 
@@ -118,6 +129,31 @@ setLevelsBasedOnBucketSize(bucket *bp)
   }
   // MAX_LEVEL is so high, we'll never get here without
   // setting the levels
+}
+
+#define SIZE_CLOSE_THRESH 30
+/*
+ * sizesAreClose() returns 1 if the sizes of the two buckets are
+ * within 30 of each other, or within 1/2 the smaller bucket size
+ * of each other, whichever is smaller.  Returns 0 otherwise.
+ */
+int
+sizesAreClose(bucket *bp1, bucket *bp2) {
+  bucket *bl, *bs;  // large and small
+  int sizeThresh;
+
+  // force bp1 to be the smaller bucket
+  if (bp1->bsize > bp2->bsize) {
+    bl = bp1;
+    bs = bp2;
+  }
+  else {
+    bl = bp2;
+    bs = bp1;
+  }
+  sizeThresh = ((int)(bs->bsize * 0.5) < SIZE_CLOSE_THRESH)?
+                     (int)(bs->bsize * 0.5):30;
+  return((bl->bsize - bs->bsize) < sizeThresh);
 }
 
 // bitNum is between 0 and 1023
@@ -184,6 +220,51 @@ makeFilterFromBucket(bucket *bp)
 }
 
 /* TESTS */
+
+int
+do_sizesAreClose(s1, s2, exp) {
+  bucket *bp1, *bp2;
+  int fail=0;
+
+  bp1 = makeRandomBucket(s1);
+  bp2 = makeRandomBucket(s2);
+  if (sizesAreClose(bp1, bp2) != exp) {
+    printf("sizesAreClose Failed, sizes %d and %d\n", s1, s2);
+    fail = 1;
+  }
+  freeBucket(bp1);
+  freeBucket(bp2);
+  return(fail);
+}
+
+test_sizesAreClose()
+{
+  int size1, size2, expected;
+  int fail = 0;
+
+  size1 = 200; size2 = 200; expected = 1;
+  fail |= do_sizesAreClose(size1, size2, expected);
+
+  size1 = 200; size2 = 220; expected = 1;
+  fail |= do_sizesAreClose(size1, size2, expected);
+  fail |= do_sizesAreClose(size2, size1, expected);
+
+  size1 = 200; size2 = 250; expected = 0;
+  fail |= do_sizesAreClose(size1, size2, expected);
+  fail |= do_sizesAreClose(size2, size1, expected);
+
+  size1 = 30; size2 = 48; expected = 0;
+  fail |= do_sizesAreClose(size1, size2, expected);
+  fail |= do_sizesAreClose(size2, size1, expected);
+
+  size1 = 30; size2 = 44; expected = 1;
+  fail |= do_sizesAreClose(size1, size2, expected);
+  fail |= do_sizesAreClose(size2, size1, expected);
+
+  if (!fail) {
+    printf("test_sizesAreClose PASSED\n");
+  }
+}
 
 test_makeFilterFromBucket()
 {
