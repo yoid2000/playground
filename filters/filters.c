@@ -1,12 +1,131 @@
-#include "./filters.h"
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
+#include <search.h>
+#include <stdlib.h>
 #include "./overlap-values.h"
+#include "./filters.h"
 
 // externs needed to keep compiler from warning
 extern bucket *makeRandomBucket(int arg1);
 extern bucket *makeBucket(int arg1);
+extern int exceedsNoisyThreshold(float arg1, float arg2, float arg3);
+
+createHashTable(int size)
+{
+  if (hcreate(size) == 0) {
+    printf("createHashTable failed!\n");
+    exit(1);
+  }
+}
+
+destroyHashTable() 
+{
+  hdestroy();
+}
+
+initHighTouch(high_touch *ht) {
+  ht->touches = 0;
+  ht->counts = 0;
+  ht->decrementThreshold = HT_INIT_DECREMENT_TOUCHES_THRESH;
+}
+
+high_touch *
+createHighTouch()
+{
+  high_touch *ht;
+
+  ht = (high_touch *) malloc(sizeof(high_touch));
+  initHighTouch(ht);
+  return(ht);
+}
+
+/*
+ *  Called when user is non-overlap in an attack setup
+ */
+high_touch *
+touchUser(uint64_t uid)
+{
+  char uids[32];    // uid string for hash table (max should be 20 or so)
+  ENTRY *uhash, ulookup;
+  high_touch *ht;
+
+  // not sure the following cast really works, but for the purposes
+  // of these simulations, it doesn't really matter
+  snprintf(uids, 32, "%llu", (long long unsigned) uid);
+  ht = createHighTouch(uid);
+  ulookup.key = uids;
+  ulookup.data = (void *) ht;
+
+  if ((uhash = hsearch(ulookup, ENTER)) == NULL) {
+    printf("touchUser hsearch fail!!!\n"); exit(1);
+  }
+  if (uhash->data != (void *) ht) {
+    // an entry for this user was already in the hash, 
+    // so free up the one I just made
+    free(ht);
+    ht = (high_touch *) uhash->data;
+  }
+  ht->touches++;
+  // the user is touched, so restart the decrement counter
+  ht->counts = 0;
+  // and double the threshold to make it harder to continue to attack
+  // this user
+  ht->decrementThreshold *= 2;
+  if (ht->decrementThreshold > HT_DECREMENT_TOUCHES_MAX) {
+    ht->decrementThreshold = HT_DECREMENT_TOUCHES_MAX;
+  }
+  return(ht);
+}
+
+int
+isUserSuppress(uint64_t uid, int threshold)
+{
+  char uids[32];    // uid string for hash table (max should be 20 or so)
+  ENTRY *uhash, ulookup;
+  high_touch *ht;
+  int suppress = 0;    // assume won't suppress
+
+  snprintf(uids, 32, "%llu", (long long unsigned) uid);
+  ulookup.key = uids;
+  ulookup.data = NULL;
+
+  if ((uhash = hsearch(ulookup, FIND)) != NULL) {
+    // user is in hash table
+    ht = (high_touch *) uhash->data;
+    ht->counts++;
+    if (exceedsNoisyThreshold(threshold, ht->touches, HT_NOISE_SD)) {
+      suppress = 1;
+    }
+    if (ht->counts > ht->decrementThreshold) {
+      // this user hasn't been touched in a while
+      ht->counts = 0;
+      if (ht->touches > 0) {ht->touches--;}
+    }
+  }
+  return(suppress);
+}
+
+/*
+ *  Return 1 if user should be suppressed, 0 otherwise
+ *  Assumes that this is called because user placed in bucket,
+ *  so also increment counts and see if touches should be decremented.
+ */
+int
+isUserSuppressAll(uint64_t uid)
+{
+  return(isUserSuppress(uid, HT_ALL_SUPPRESS_THRESH));
+}
+
+/*
+ *  Return 1 if user should be suppressed, 0 otherwise
+ */
+int
+isUserSuppressAttack(uint64_t uid)
+{
+  return(isUserSuppress(uid, HT_ATTACK_SUPPRESS_THRESH));
+}
+
 
 /* 
  * Finds 1) the number of bit positions in common between the
@@ -220,6 +339,157 @@ makeFilterFromBucket(bucket *bp)
 }
 
 /* TESTS */
+
+test_hsearch()
+{
+  ENTRY *uhash, ulookup;
+  unsigned char *str = "here is the entry\n";
+
+  if (hcreate(1000) == 0) {
+    printf("createHashTable failed!\n");
+    exit(1);
+  }
+
+  ulookup.data = (void *) str;
+  ulookup.key = "1234";
+
+  if ((uhash = hsearch(ulookup, FIND)) != NULL) {
+    printf("test_hsearch() FAILED F1\n"); exit(1);
+  }
+  if ((uhash = hsearch(ulookup, ENTER)) == NULL) {
+    printf("test_hsearch() FAILED F2\n"); exit(1);
+  }
+  if (strcmp(ulookup.key, uhash->key) != 0) {
+    printf("test_hsearch() FAILED F3\n"); exit(1);
+  }
+  if (uhash == &ulookup) {
+    printf("test_hsearch() FAILED F4\n"); exit(1);
+  }
+
+  hdestroy();
+  printf("test_hsearch() passed.\n");
+}
+
+test_highTouch()
+{
+  int i;
+  ENTRY *uhash, ulookup;
+  high_touch *ht;
+  char uids[32];    // uid string for hash table (max should be 20 or so)
+
+  snprintf(uids, 32, "%d", 1111);
+  ulookup.key = uids;
+  ulookup.data = NULL;
+
+  createHashTable(10000);
+  if (isUserSuppress(1111, HT_ATTACK_SUPPRESS_THRESH) == 1) {
+    printf("F1: test_highTouch() FAILED\n"); exit(1);
+  }
+  if ((uhash = hsearch(ulookup, FIND)) != NULL) {
+    printf("F2: test_highTouch() FAILED\n"); exit(1);
+  }
+  ht = touchUser(1111);
+/*
+  // no idea why I couldn't get the following to work  :(
+  if ((uhash = hsearch(ulookup, FIND)) == NULL) {
+    printf("F3: test_highTouch() FAILED\n"); exit(1);
+  }
+  ht = (high_touch *) uhash->data;
+*/
+  if (ht->touches != 1) {
+    printf("F4: test_highTouch() FAILED\n"); exit(1);
+  }
+  if (ht->counts != 0) {
+    printf("F5: test_highTouch() FAILED\n"); exit(1);
+  }
+  if (ht->decrementThreshold != (2 * HT_INIT_DECREMENT_TOUCHES_THRESH)) {
+    printf("F8: test_highTouch() FAILED (%d)\n", ht->decrementThreshold); exit(1);
+  }
+  if (isUserSuppress(1111, HT_ATTACK_SUPPRESS_THRESH) == 1) {
+    printf("F6: test_highTouch() FAILED\n"); exit(1);
+  }
+  if (ht->counts != 1) {
+    printf("F7: test_highTouch() FAILED\n"); exit(1);
+  }
+  for (i = 0; i < 500; i++) {
+    if (isUserSuppress(1111, HT_ATTACK_SUPPRESS_THRESH) == 1) {
+      printf("F9: test_highTouch() FAILED (%d)\n", i); exit(1);
+    }
+    if (ht->counts != (i+2)) {
+      printf("F10: test_highTouch() FAILED (%d, %d)\n", ht->counts, i+2); exit(1);
+    }
+  }
+  for (i = 0; i < 1000; i++) {
+    if (isUserSuppress(1111, HT_ATTACK_SUPPRESS_THRESH) == 1) {
+      printf("F11: test_highTouch() FAILED (%d)\n", i); exit(1);
+    }
+    if (ht->counts != (i+2+500)) {
+      printf("F12: test_highTouch() FAILED (%d, %d)\n", ht->counts, i+2+500); exit(1);
+    }
+  }
+  for (i = 0; i < 1000; i++) {
+    if (isUserSuppress(1111, HT_ATTACK_SUPPRESS_THRESH) == 1) {
+      printf("F24: test_highTouch() FAILED (%d)\n", i); exit(1);
+    }
+  }
+  // should have pushed touches back to 0 cause of all the isUserSuppress()
+  if (ht->touches != 0) {
+    printf("F13: test_highTouch() FAILED\n"); exit(1);
+  }
+  if (ht->decrementThreshold != (2 * HT_INIT_DECREMENT_TOUCHES_THRESH)) {
+    printf("F14: test_highTouch() FAILED (%d)\n", ht->decrementThreshold); exit(1);
+  }
+  touchUser(1111);
+  touchUser(1111);
+  touchUser(1111);
+  touchUser(1111);
+  touchUser(1111);
+  touchUser(1111);
+  touchUser(1111);
+  if (ht->counts != 0) {
+    printf("F15: test_highTouch() FAILED\n"); exit(1);
+  }
+  if (isUserSuppress(1111, HT_ATTACK_SUPPRESS_THRESH) == 0) {
+    printf("F16: test_highTouch() FAILED\n"); exit(1);
+  }
+  if (isUserSuppress(1111, HT_ALL_SUPPRESS_THRESH) == 1) {
+    printf("F17: test_highTouch() FAILED\n"); exit(1);
+  }
+  if (ht->decrementThreshold != (256 * HT_INIT_DECREMENT_TOUCHES_THRESH)) {
+    printf("F18: test_highTouch() FAILED (%d)\n", ht->decrementThreshold); exit(1);
+  }
+  touchUser(1111);
+  touchUser(1111);
+  touchUser(1111);
+  touchUser(1111);
+  touchUser(1111);
+  touchUser(1111);
+  touchUser(1111);
+  if (isUserSuppress(1111, HT_ATTACK_SUPPRESS_THRESH) == 0) {
+    printf("F19: test_highTouch() FAILED\n"); exit(1);
+  }
+  if (isUserSuppress(1111, HT_ALL_SUPPRESS_THRESH) == 0) {
+    printf("F20: test_highTouch() FAILED\n"); exit(1);
+  }
+  if (ht->decrementThreshold > HT_DECREMENT_TOUCHES_MAX) {
+    printf("F21: test_highTouch() FAILED (%d)\n", ht->decrementThreshold); exit(1);
+  }
+  for (i = 0; i < (HT_DECREMENT_TOUCHES_MAX*7)+100; i++) {
+    isUserSuppress(1111, HT_ATTACK_SUPPRESS_THRESH);
+  }
+  if (isUserSuppress(1111, HT_ATTACK_SUPPRESS_THRESH) == 0) {
+    printf("F22: test_highTouch() FAILED\n"); exit(1);
+  }
+  for (i = 0; i < (HT_DECREMENT_TOUCHES_MAX*7)+100; i++) {
+    isUserSuppress(1111, HT_ATTACK_SUPPRESS_THRESH);
+  }
+  if (isUserSuppress(1111, HT_ATTACK_SUPPRESS_THRESH) == 1) {
+    printf("F23: test_highTouch() FAILED\n"); exit(1);
+  }
+  printf("test_highTouch() passed\n"); exit(1);
+  
+  destroyHashTable();
+}
 
 int
 do_sizesAreClose(s1, s2, exp) {

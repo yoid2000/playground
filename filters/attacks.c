@@ -152,7 +152,7 @@ main()
 
   // Make complete list of users used for all attacks
   userList = makeRandomBucket(USER_LIST_SIZE);
-  initDefense(10000);
+  initDefense(10000, USER_LIST_SIZE);
 
   runNaiveDiffAttack(userList, 0);
 
