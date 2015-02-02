@@ -6,3 +6,4 @@ compare/*csv
 filters/runTests
 filters/runAttacks
 */*txt
+*/*swp

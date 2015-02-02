@@ -1,9 +1,3 @@
-unsigned char test_array[2][3] = { { 1, 
-2, 3 }, { 1, 2, 
-3 } 
-};
-
-
 unsigned char overlap_array[800][256]  = {
   {    // [0][0]
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
