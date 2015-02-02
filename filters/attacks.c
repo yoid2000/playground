@@ -9,6 +9,9 @@ extern bucket *makeRandomBucket(int arg1);
 extern bucket *makeRandomBucketFromList(int arg1, bucket *arg2);
 extern bucket *dupBucket(bucket *arg1);
 extern bucket *combineBuckets(bucket *arg1, bucket *arg2);
+extern bucket *createHighTouchTable(int arg1);
+
+#define USER_LIST_SIZE 16384    // gives 256 groups of 64 users, for instance
 
 #define VICTIM_HAS_ATTRIBUTE 1
 #define VICTIM_NO_ATTRIBUTE 2
@@ -28,7 +31,6 @@ makeChaffBuckets(bucket *userList, int low, int high, int defend) {
   int temp, bsize1, bsize2, i, chaffAmount, noisyCount;
   int overlap, absNumOverlap;
   bucket *bp1, *bp2;
-  int middle=0, top=0;
   compare c;
 
   chaffAmount = getRandInteger(low, high);
@@ -43,14 +45,7 @@ makeChaffBuckets(bucket *userList, int low, int high, int defend) {
     bp1 = makeRandomBucketFromList(bsize1, userList);
     bp2 = makeRandomBucketFromList(bsize2, userList);
     if (bsize1 & 1) {
-      overlap = getRandInteger(99,100);
-      if (overlap >= 95) {
-        top++;
-        // printf("------------\n");
-      }
-      else if (overlap >= 50) {
-        middle++;
-      }
+      overlap = getRandInteger(0,/* zzzz 100*/2);
       absNumOverlap = (int) ((float) (bsize1 * overlap) / (float) 100.0);
       if (absNumOverlap > bsize1) {
       // should never happen
@@ -60,14 +55,13 @@ makeChaffBuckets(bucket *userList, int low, int high, int defend) {
       makeCompareBucketFixed(bp1, bp2, absNumOverlap);
     }
     else {
-      overlap = 0;
+      overlap = 0;   // only for reporting
     }
     // printf("Attack: size %d, overlap %d\n", bp1->bsize, overlap);
     noisyCount = putBucket(bp1, defend);
     // printf("Attack: size %d, overlap %d\n", bp2->bsize, overlap);
     noisyCount = putBucket(bp2, defend);
   }
-  // printf("Attack: %d middles, %d tops\n", middle, top);
 }
 
 int
@@ -83,9 +77,12 @@ oneNaiveDiffAttack(int numSamples, bucket *userList, int defend)
   // if the victim has the attribute, and the other set of buckets will
   // have the victim otherwise.  Therefore for the sake of this simulation,
   // it doesn't matter which set we put the victim in.
-  vbp = makeRandomBucket(1);	// the victim
+  vbp = makeRandomBucketFromList(1, userList);
+  printf("********VICTIM is %lx********\n", vbp->list[0]);
   makeChaffBuckets(userList, 25, 75, defend);
   for (i = 0; i < numSamples; i++){
+    // There is a chance the victim will be in this bucket too
+    // Statistically this won't effect things much
     bp1 = makeRandomBucketFromList(getRandInteger(20, 200), userList);
     bp2 = combineBuckets(bp1, vbp);
     // bp1 and bp2 are identical, except bp2 has victim
@@ -123,11 +120,12 @@ runNaiveDiffAttack(bucket *userList, int defend)
     accIndex = 0;
     rightGuesses = 0;
     for (i = 0; i < NUM_ROUNDS; i++) {
+      initDefense(10000);
       answer = oneNaiveDiffAttack(numSamples, userList, defend);
+      endDefense();
       if (answer == VICTIM_HAS_ATTRIBUTE) {
         rightGuesses++;
       }
-      freeStoredFilters();
     }
     if (accIndex != accSize) {
       printf("Something wrong with accIndex %d (should be %d)\n", 
@@ -143,7 +141,6 @@ runNaiveDiffAttack(bucket *userList, int defend)
   }
 }
 
-#define USER_LIST_SIZE 16384    // gives 256 groups of 64 users, for instance
 main()
 {
   bucket *userList;
@@ -151,10 +148,10 @@ main()
   srand48((long int) 1);
 
   // Make complete list of users used for all attacks
-  userList = makeRandomBucket(USER_LIST_SIZE);
-  initDefense(10000, USER_LIST_SIZE);
+  userList = createHighTouchTable(USER_LIST_SIZE);
 
-  runNaiveDiffAttack(userList, 0);
-
-  endDefense();
+  //printf("Naive Diff Attack, no defense:\n");
+  //runNaiveDiffAttack(userList, 0);
+  printf("Naive Diff Attack, with defense:\n");
+  runNaiveDiffAttack(userList, 1);
 }

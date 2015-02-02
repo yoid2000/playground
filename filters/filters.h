@@ -1,6 +1,9 @@
 #include <stdint.h>
 
+#define SIZE_CLOSE_THRESH 30
+
 #define FILTER_LEN 16
+
 /*
  * By right shifting the 10-bit bit number by 6, we get a
  * 4-bit index into the array of 64-bit filter words.
@@ -52,6 +55,8 @@ typedef struct compare_t {
   int overlap;
 } compare;
 
+#define HT_ATTACK 0
+#define HT_ALL 1
 #define HT_ATTACK_SUPPRESS_THRESH 5
 #define HT_ALL_SUPPRESS_THRESH 10
 #define HT_DECREMENT_TOUCHES_THRESH 100000
@@ -67,3 +72,8 @@ typedef struct high_touch_t {
 			     // (doubles everytime  HT_ALL_SUPPRESS_THRESH
                              // is crossed)
 } high_touch;
+
+#define KEY_LEN 32
+typedef struct hash_key_t {
+  char str[KEY_LEN];
+} hash_key;

@@ -575,6 +575,7 @@ main()
   // test_combineBuckets();
   // test_getNonOverlap();
   // test_sizesAreClose();
-  test_hsearch();
+  // test_hsearch();
+  // test_createHighTouchTable();
   test_highTouch();
 }

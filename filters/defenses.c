@@ -9,17 +9,23 @@
 extern bucket *dupBucket(bucket *arg1);
 extern float getNormal(float arg1, float arg2);
 extern float getFixedNormal(uint64_t arg1, float arg2, float arg3);
+extern bucket *getNonOverlap(bucket *arg1, bucket *arg2,
+                             bucket **arg3, 
+                             bucket **arg4, 
+                             bucket **arg5, 
+                             bucket **arg6);
+
 
 bucket **storedFilters;
 int sfIndex; 	// index into above list
 int maxSfIndex;
 
-initDefense(int maxBuckets, int userListSize) {
+initDefense(int maxBuckets) {
   storedFilters = (bucket **) calloc(maxBuckets, sizeof(bucket *));
   sfIndex = 0;
   maxSfIndex = maxBuckets;
   // this hash table much bigger than needed
-  createHashTable(userListSize);
+  initHighTouchTable();
 }
 
 freeStoredFilters()
@@ -34,7 +40,7 @@ freeStoredFilters()
 
 endDefense() {
   freeStoredFilters();
-  destroyHashTable();
+  free(storedFilters);
 }
 
 int
@@ -59,16 +65,29 @@ computeNoisyCount(bucket *bp)
 // matching buckets.  Because of added noise, it is not critical
 // that we catch all near matches.
 #define NEAR_MATCH_THRESHOLD 90
-// returns a noisy integer count (not rounded)
+/*
+ *  This routine operates on one bucket at a time.  This means that if
+ *  the current bucket is a near match with a former bucket, then the
+ *  non-overlapping (victim) nodes in the former bucket will not have
+ *  been suppressed.  This is a worst-case scenario.  A better scenario
+ *  would be where all attack buckets are part of the same query, and
+ *  so victims in all attack buckets can be suppressed.  (Of course, a
+ *  smart attacker wouldn't do it this way  ;)
+ *
+ * returns a noisy integer count (not rounded to nearest 5)
+ */
 int
 putBucketDefend(bucket *bp) 
 {
   int i, j, overlap;
   compare c;
   bucket *fbp;	// final bucket
-  bucket *bp1, *bp2;
+  bucket *bp1;
+  bucket *nobp, *obp, *nobp1, *obp1;
+  bucket *noisebp;
   int noisyCount;
 
+  nobp=NULL; obp=NULL; nobp1=NULL; obp1=NULL;
   makeFilterFromBucket(bp);
   if (sfIndex < maxSfIndex) {
     j = sfIndex;
@@ -79,28 +98,59 @@ putBucketDefend(bucket *bp)
     exit(1);
   }
 
-  fbp = dupBucket(bp);
+  noisebp = bp;
+  // zzzz we need to remove high-touch users here....later
   for (i = 0; i < j; i++) {
     bp1 = storedFilters[i];
-    bp2 = storedFilters[j];
-    compareFullFilters(bp1, bp2, &c);
+    compareFullFilters(bp1, bp, &c);
     overlap = (int) ((float) c.overlap * (float) 1.5625);
+/*
     if (i == (j-1)) {
-      //printf("               %d, %d, %d, %d (%d, %d) (%d, %d)\n", i, j, c.overlap, overlap, c.first, c.common, bp1->bsize, bp2->bsize);
+      printf("               %d, %d, %d, %d (%d, %d) (%d, %d)\n", 
+             i, j, c.overlap, overlap, c.first, c.common, 
+             bp1->bsize, bp->bsize);
     }
+*/
     if (overlap > NEAR_MATCH_THRESHOLD) {
-      if (sizesAreClose(bp1, bp2)) {
-      // Find non-overlapping users (sort and walk):
+      if (sizesAreClose(bp, bp1)) {
+        // Find non-overlapping users (sort and walk):
+        sortBucketList(bp);
         sortBucketList(bp1);
-        sortBucketList(bp1);
-      // Count non-overlapping users in high-touch hash
-      // Remove high-touch users from near-match buckets
+        getNonOverlap(bp, bp1, &nobp, &nobp1, &obp, &obp1);
+        // Count non-overlapping users in high-touch hash
+        if (((nobp->bsize + nobp1->bsize) < SIZE_CLOSE_THRESH) &&
+            ((nobp->bsize + nobp1->bsize) > 0)) {
+printf("%d, %d (%d, %d)\n", nobp->bsize, nobp1->bsize, bp->bsize, bp1->bsize);
+          // the combined non-overlap is small enough that
+          // we consider the two buckets to be near matches.
+
+          // touch the overlapping users from both buckets (note that
+          // this means that, for the former bucket, I might be touching 
+          // users more than once for the same bucket).
+printf("bp:\n"); printBucket(bp);
+printf("bp1:\n"); printBucket(bp1);
+printf("nobp:\n"); printBucket(nobp);
+printf("nobp1:\n"); printBucket(nobp1);
+printf("obp:\n"); printBucket(obp);
+printf("obp1:\n"); printBucket(obp1);
+printf("1\n");
+          touchNonOverlappingUsers(nobp);
+printf("2\n");
+          touchNonOverlappingUsers(nobp1);
+
+          // Add non-suppressed non-overlap users to overlap bucket
+          addNonSuppressedUsers(obp, nobp, HT_ATTACK);
+          noisebp = obp;
+        }
       }
     }
   }
 
-  noisyCount = computeNoisyCount(fbp);
-  freeBucket(fbp);
+  noisyCount = computeNoisyCount(noisebp);
+  if (nobp) { freeBucket(nobp); }
+  if (obp) { freeBucket(obp); }
+  if (nobp1) { freeBucket(nobp1); }
+  if (obp1) { freeBucket(obp1); }
   return(noisyCount);
 }
 

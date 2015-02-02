@@ -246,12 +246,15 @@ makeCompareBucketFixed(bucket* bp1, bucket* bp2, int numMatches) {
   }
 }
 
-// I think this compare function is not exactly "right", in the sense
-// that it is not producing monotonically increasing values in the
-// list (maybe because of signed versus unsigned????).  However, this
-// shouldn't be a problem, since we only care that two buckets are
-// sorted the same way, not that they are individually monotonically
-// increasing.
+/*
+ * I think this compare function is not exactly "right", in the sense
+ * that it is not producing monotonically increasing values in the
+ * list (maybe because of signed versus unsigned????).  However, this
+ * is not a problem, since we only care that two buckets are
+ * sorted the same way, and that getNonOverlap uses the same compare
+ * function, and not that they are individually monotonically
+ * increasing.
+ */
 int userCmpFunc (const void * a, const void * b)
 {
   return ( (*(uint64_t *)a) - (*(uint64_t *)b) );
@@ -265,65 +268,136 @@ sortBucketList(bucket *bp)
   }
 }
 
+/*
+ *  Finds non-overlapping users between the two buckets, 
+ *  and makes four new buckets:  two with only the non-overlapping
+ *  users from each of the buckets respectively, and two
+ *  containing only the overlapping users of the two buckets.
+ *  The returned buckets have the same amount of allocated space in the
+ *  user lists as the corresponding submitted buckets.  This is
+ *  important because more users may be added to the overlap buckets
+ *  by the calling routine.  Note that the two overlapping buckets are
+ *  identical (in membership, though not in allocated memory).  This is
+ *  maybe a bit of unecessary extra work, but it makes things cleaner 
+ *  on the calling side.
+ *  The calling routine must free the four new buckets.
+ */
 bucket *
-getNonOverlap(bucket *bp1, bucket *bp2)
+getNonOverlap(bucket *bp1, 	// submitted bucket 1 (sorted)
+              bucket *bp2,      // submitted bucket 2 (sorted)
+              bucket **r_nobp1,   // non-overlap of bp1
+              bucket **r_nobp2,   // non-overlap of bp2
+              bucket **r_obp1,    // overlap of bp1
+              bucket **r_obp2)    // overlap of bp2
 {
-  uint64_t *l1, *l2, *nol, *l1_last, *l2_last;
-  bucket *nobp;	// non-overlap bucket
+  uint64_t *l1, *l2, *l1_last, *l2_last;
+  bucket *nobp1, *nobp2, *obp1, *obp2;	// return buckets
+  uint64_t *nol1, *nol2, *ol1, *ol2;
   int compare;
 
-
-  // We pessimistically make the worst-case sized bucket.  Since we
-  // define non-overlap as coming from either bucket, the worst case
-  // would be all users in both buckets.
-  nobp = makeBucket(bp1->bsize + bp2->bsize);
+  // We pessimistically make the worst-case sized buckets.
+  nobp1 = makeBucket(bp1->bsize);
+  obp1 = makeBucket(bp1->bsize);
+  nobp2 = makeBucket(bp2->bsize);
+  obp2 = makeBucket(bp2->bsize);
+  // set up all my list pointers
   l1 = bp1->list;
   l1_last = &(bp1->list[bp1->bsize]);
   l2 = bp2->list;
   l2_last = &(bp2->list[bp2->bsize]);
-  nol = nobp->list;
-  nobp->bsize = 0;
+  nol1 = nobp1->list;
+  ol1 = obp1->list;
+  nol2 = nobp2->list;
+  ol2 = obp2->list;
+  // and initialize the overlap and non-overlap bucket sizes
+  nobp1->bsize = 0;
+  obp1->bsize = 0;
+  nobp2->bsize = 0;
+  obp2->bsize = 0;
   while(1) {
     if ((l2 == l2_last) && (l1 == l1_last)) {
       break;
     }
     else if ((l2 == l2_last) && (l1 < l1_last)) {
-      *nol = *l1;
-      nol++;
+      *nol1 = *l1;
+      nol1++;
       l1++;
-      nobp->bsize++;
+      nobp1->bsize++;
     }
     else if ((l2 < l2_last) && (l1 == l1_last)) {
-      *nol = *l2;
-      nol++;
+      *nol2 = *l2;
+      nol2++;
       l2++;
-      nobp->bsize++;
+      nobp2->bsize++;
     }
     else {
       compare = userCmpFunc((const void *)l2, (const void *)l1);
       if (compare == 0) {
-        if (l2 < l2_last) { l2++;}
-        if (l1 < l1_last) { l1++;}
+        if (l2 < l2_last) {
+          *ol2 = *l2;
+          ol2++;
+          l2++;
+          obp2->bsize++;
+        }
+        if (l1 < l1_last) {
+          *ol1 = *l1;
+          ol1++;
+          l1++;
+          obp1->bsize++;
+        }
       }
       else if (compare < 0) {
         if (l2 < l2_last) {
-          *nol = *l2;
-          nol++;
+          *nol2 = *l2;
+          nol2++;
           l2++;
-          nobp->bsize++;
+          nobp2->bsize++;
         }
       }
       else if (compare > 0) {
         if (l1 < l1_last) { 
-          *nol = *l1;
-          nol++;
+          *nol1 = *l1;
+          nol1++;
           l1++;
-          nobp->bsize++;
+          nobp1->bsize++;
         }
       }
     }
   }
-  return(nobp);
+  // set the return pointers
+  *r_nobp1 = nobp1;
+  *r_nobp2 = nobp2;
+  *r_obp1 = obp1;
+  *r_obp2 = obp2;
+}
+
+addNonSuppressedUsers(bucket *to, bucket *from, int type)
+{
+  int i;
+  uint64_t *fl, *tl;
+  int suppress;
+
+  fl = from->list;
+  tl = &(to->list[to->bsize]);
+  for (i = 0; i < from->bsize; i++) {
+    if (type == HT_ATTACK) {
+      suppress = isUserSuppressAttack(*fl);
+    }
+    else {
+      suppress = isUserSuppressAll(*fl);
+    }
+    if (suppress == 0) {
+      // don't need to suppress, so add to bucket
+      *tl = *fl;
+      tl++;
+      to->bsize++;
+    }
+    else {
+printf("-------------------%x is suppressed ----------------\n",
+        (int)(*fl & 0xffff));
+    }
+    fl++;
+  }
 }
 
 uint64_t
@@ -408,48 +482,116 @@ countHighAndLowBits(bucket *bp)
 
 /*********** TESTS **********/
 
+
 do_getNonOverlap(int bsize1, int bsize2, int overlap)
 {
-  bucket *bp1, *bp2, *nbp;
-  int i, j, foundDups;
+  bucket *bp1, *bp2;
+  bucket *nobp1, *nobp2, *obp1, *obp2;
+  int i, j, foundDups1, foundDups2;
 
+  nobp1 = NULL; nobp2 = NULL; obp1 = NULL; obp2 = NULL;
   bp1 = makeRandomBucket(bsize1);
   bp2 = makeRandomBucket(bsize2);
   makeCompareBucketFixed(bp1, bp2, overlap);
-  nbp = getNonOverlap(bp1, bp2);
-  if (nbp->bsize != bsize1 + bsize2 - (overlap * 2)) {
-    printf("test_getNonOverlap FAILED!!! (got %d, expect %d), bsize1 = %d, bsize2 = %d, overlap = %d\n", nbp->bsize, bsize1 + bsize2 - (overlap * 2), bsize1, bsize2, overlap);
+  getNonOverlap(bp1, bp2, &nobp1, &nobp2, &obp1, &obp2);
+  if ((nobp1 == NULL) || (nobp2 == NULL) || (obp1 == NULL) || (obp2 == NULL)) {
+    printf("test_getNonOverlap FAILED!!!  NULL return pointer\n");
     goto finish;
   }
-  for (i = 0; i < nbp->bsize; i++) {
-    foundDups = 0;
+  if (bp1->bsize != (nobp1->bsize + obp1->bsize)) {
+    printf("test_getNonOverlap FAILED!!! (bp1: got %d = (%d+%d), expected %d)\n",
+             (nobp1->bsize + obp1->bsize), bp1->bsize,
+             nobp1->bsize, obp1->bsize);
+    goto finish;
+  }
+  if (bp2->bsize != (nobp2->bsize + obp2->bsize)) {
+    printf("test_getNonOverlap FAILED!!! (bp2: got %d = (%d+%d), expected %d)\n",
+             (nobp2->bsize + obp2->bsize), bp2->bsize,
+             nobp2->bsize, obp2->bsize);
+    goto finish;
+  }
+  if (overlap != obp1->bsize) {
+    printf("test_getNonOverlap FAILED!!! (overlap1: got %d, expected %d)\n",
+           overlap, obp1->bsize);
+    goto finish;
+  }
+  if (overlap != obp2->bsize) {
+    printf("test_getNonOverlap FAILED!!! (overlap2: got %d, expected %d)\n",
+           overlap, obp2->bsize);
+    goto finish;
+  }
+
+  for (i = 0; i < nobp1->bsize; i++) {
+    foundDups1 = 0;
+    foundDups2 = 0;
     for (j = 0; j < bp1->bsize; j++) {
-      if (nbp->list[i] == bp1->list[j]) {
-        foundDups++;
+      if (nobp1->list[i] == bp1->list[j]) {
+        foundDups1++;
       }
     }
     for (j = 0; j < bp2->bsize; j++) {
-      if (nbp->list[i] == bp2->list[j]) {
-        foundDups++;
+      if (nobp1->list[i] == bp2->list[j]) {
+        foundDups2++;
       }
     }
-    if (foundDups != 1) {
-      printf("test_getNonOverlap FAILED!!! (found %d dups), bsize1 = %d, bsize2 = %d, overlap = %d\n", foundDups, bsize1, bsize2, overlap);
+    if (foundDups1 != 1) {
+      printf("test_getNonOverlap FAILED!!! dup1, found %d dups, expected 1\n",
+              foundDups1);
+      goto finish;
+    }
+    if (foundDups2 != 0) {
+      printf("test_getNonOverlap FAILED!!! dup1, found %d dups, expected 0\n",
+              foundDups2);
+      goto finish;
+    }
+  }
+
+  for (i = 0; i < nobp2->bsize; i++) {
+    foundDups1 = 0;
+    foundDups2 = 0;
+    for (j = 0; j < bp1->bsize; j++) {
+      if (nobp2->list[i] == bp1->list[j]) {
+        foundDups2++;
+      }
+    }
+    for (j = 0; j < bp2->bsize; j++) {
+      if (nobp2->list[i] == bp2->list[j]) {
+        foundDups1++;
+      }
+    }
+    if (foundDups1 != 1) {
+      printf("test_getNonOverlap FAILED!!! dup2, found %d dups, expected 1\n",
+              foundDups1);
+      goto finish;
+    }
+    if (foundDups2 != 0) {
+      printf("test_getNonOverlap FAILED!!! dup2, found %d dups, expected 0\n",
+              foundDups2);
       goto finish;
     }
   }
 
   freeBucket(bp1);
   freeBucket(bp2);
-  freeBucket(nbp);
+  freeBucket(nobp1);
+  freeBucket(nobp2);
+  freeBucket(obp1);
+  freeBucket(obp2);
   return;
 finish:
+  printf("bsize1 = %d, bsize2 = %d, overlap = %d\n", bsize1, bsize2, overlap);
   printf("bp1:\n");
   printBucket(bp1);
   printf("bp2:\n");
   printBucket(bp2);
-  printf("nbp:\n");
-  printBucket(nbp);
+  printf("nobp1:\n");
+  printBucket(nobp1);
+  printf("nobp2:\n");
+  printBucket(nobp2);
+  printf("obp1:\n");
+  printBucket(obp1);
+  printf("obp2:\n");
+  printBucket(obp2);
   exit(1);
 }
 
