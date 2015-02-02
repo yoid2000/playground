@@ -1,9 +1,10 @@
-#include "./filters.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include <search.h>
+#include "./filters.h"
+#include "./hightouch.h"
 
 // externs needed to keep compiler from warning
 extern bucket *dupBucket(bucket *arg1);
