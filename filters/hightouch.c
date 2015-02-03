@@ -40,7 +40,7 @@ bucket *
 createHighTouchTable(int size)
 {
   bucket *bp;
-  uint64_t *lp;
+  unsigned int *lp;
   int i;
   ENTRY *ulookup;
 
@@ -59,7 +59,7 @@ createHighTouchTable(int size)
   }
   lp = bp->list;
   for (i = 0; i < size; i++) {
-    snprintf(keys_table[i].str, KEY_LEN, "%llu", (long long unsigned) *lp);
+    snprintf(keys_table[i].str, KEY_LEN, "%d", *lp);
     entry_table[i].key = keys_table[i].str;
     entry_table[i].data = (void *) &(ht_table[i]);
     if (hsearch(entry_table[i], ENTER) == NULL) {
@@ -73,24 +73,24 @@ createHighTouchTable(int size)
 }
 
 high_touch *
-getHighTouch(uint64_t uid)
+getHighTouch(unsigned int uid)
 {
   ENTRY *uhash, ulookup;
   high_touch *ht;
   char uids[KEY_LEN];
 
-  snprintf(uids, KEY_LEN, "%llu", (long long unsigned) uid);
+  snprintf(uids, KEY_LEN, "%d", uid);
   ulookup.key = uids;
   ulookup.data = (void *) NULL;
 
   if ((uhash = hsearch(ulookup, FIND)) == NULL) {
-    printf("getHighTouch: hsearch failed (uid %lx, key %s)!!\n", 
+    printf("getHighTouch: hsearch failed (uid %x, key %s)!!\n", 
              uid, ulookup.key);
     exit(1);
   }
 
   ht = (high_touch *) uhash->data;
-  printf("getHighTouch: good hsearch (uid %lx, key %s!!\n", 
+  printf("getHighTouch: good hsearch (uid %x, key %s!!\n", 
              uid, ulookup.key);
   
   return(ht);
@@ -99,7 +99,7 @@ getHighTouch(uint64_t uid)
 /*
  *  Called when user is non-overlap in an attack setup
  */
-touchUser(uint64_t uid)
+touchUser(unsigned int uid)
 {
   high_touch *ht;
 
@@ -117,7 +117,7 @@ touchUser(uint64_t uid)
 }
 
 int
-isUserSuppress(uint64_t uid, int threshold)
+isUserSuppress(unsigned int uid, int threshold)
 {
   high_touch *ht;
   int suppress = 0;    // assume won't suppress
@@ -159,7 +159,7 @@ isUserSuppressAttack(int uid)
 touchNonOverlappingUsers(bucket *bp)
 {
   int i;
-  uint64_t *lp;
+  unsigned int *lp;
 
   lp = bp->list;
   for (i = 0; i < bp->bsize; i++) {
@@ -179,7 +179,7 @@ test_createHighTouchTable()
   bp = createHighTouchTable(1000);
   
   for (i = 0; i < 1000; i++) {
-    ht = getHighTouch((uint64_t) bp->list[i]);
+    ht = getHighTouch((unsigned int) bp->list[i]);
   }
   for (i = 0; i < 1000; i++) {
     ht = getHighTouch(bp->list[i]);
@@ -199,7 +199,7 @@ test_hsearch()
   }
 
   ulookup.data = (void *) str;
-  snprintf(thekey, KEY_LEN, "%llu", (long long unsigned) 0x1234567812345678);
+  snprintf(thekey, KEY_LEN, "%d", 0x12345678);
   ulookup.key = thekey;
 
   if ((uhash = hsearch(ulookup, FIND)) != NULL) {
@@ -222,7 +222,7 @@ test_hsearch()
   printf("test_hsearch() passed.\n");
 }
 
-do_highTouch(uint64_t u_id)
+do_highTouch(unsigned int u_id)
 {
   int i;
   high_touch *ht;
@@ -369,7 +369,7 @@ test_highTouch()
 addNonSuppressedUsers(bucket *to, bucket *from, int type)
 {
   int i;
-  uint64_t *fl, *tl;
+  unsigned int *fl, *tl;
   int suppress;
 
   fl = from->list;

@@ -9,7 +9,7 @@
 // externs needed to keep compiler from warning
 extern bucket *dupBucket(bucket *arg1);
 extern float getNormal(float arg1, float arg2);
-extern float getFixedNormal(uint64_t arg1, float arg2, float arg3);
+extern float getFixedNormal(unsigned int arg1, float arg2, float arg3);
 extern bucket *getNonOverlap(bucket *arg1, bucket *arg2,
                              bucket **arg3, 
                              bucket **arg4, 
@@ -49,7 +49,7 @@ computeNoisyCount(bucket *bp)
 {
   int i;
   float noise;
-  uint64_t fix=0;
+  unsigned int fix=0;
 
   for (i = 0; i < bp->bsize; i++) {
     fix ^= bp->list[i];

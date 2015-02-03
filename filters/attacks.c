@@ -78,7 +78,7 @@ oneNaiveDiffAttack(int numSamples, bucket *userList, int defend)
   // have the victim otherwise.  Therefore for the sake of this simulation,
   // it doesn't matter which set we put the victim in.
   vbp = makeRandomBucketFromList(1, userList);
-  printf("********VICTIM is %lx********\n", vbp->list[0]);
+  printf("********VICTIM is %x********\n", vbp->list[0]);
   makeChaffBuckets(userList, 25, 75, defend);
   for (i = 0; i < numSamples; i++){
     // There is a chance the victim will be in this bucket too

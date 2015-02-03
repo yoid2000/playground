@@ -23,7 +23,7 @@ makeBucket(int bsize)
 
   bp = (bucket*) malloc(sizeof(bucket));
   bp->sorted = 0;
-  bp->list = (uint64_t*) calloc(bsize, sizeof(uint64_t));
+  bp->list = (unsigned int *) calloc(bsize, sizeof(unsigned int));
   bp->bsize = bsize;
   initFilter(bp);
 
@@ -35,7 +35,7 @@ dupBucket(bucket *from)
 {
   int i;
   bucket *bp;
-  uint64_t *lfrom, *lp;
+  unsigned int *lfrom, *lp;
 
   bp = makeBucket(from->bsize);
   bp->sorted = from->sorted;
@@ -55,7 +55,7 @@ combineBuckets(bucket *bp1, bucket *bp2)
 {
   int i;
   bucket *bp;
-  uint64_t *lfrom, *lp;
+  unsigned int *lfrom, *lp;
 
   bp = makeBucket(bp1->bsize + bp2->bsize);
   bp->sorted = 0;
@@ -80,7 +80,7 @@ combineBuckets(bucket *bp1, bucket *bp2)
  */
 makeCompareBucketFixed(bucket* bp1, bucket* bp2, int numMatches) {
   int i;
-  uint64_t *lp1, *lp2;
+  unsigned int *lp1, *lp2;
 
   if (numMatches > bp1->bsize) {numMatches = bp1->bsize;}
   if (numMatches > bp2->bsize) {numMatches = bp2->bsize;}
@@ -105,14 +105,14 @@ makeCompareBucketFixed(bucket* bp1, bucket* bp2, int numMatches) {
  */
 int userCmpFunc (const void * a, const void * b)
 {
-  return ( (*(uint64_t *)a) - (*(uint64_t *)b) );
+  return ( (*(unsigned int *)a) - (*(unsigned int *)b) );
 }
 
 sortBucketList(bucket *bp)
 {
   if (bp->sorted == 0) {
     bp->sorted = 1;
-    qsort(bp->list, bp->bsize, sizeof(uint64_t), userCmpFunc);
+    qsort(bp->list, bp->bsize, sizeof(unsigned int), userCmpFunc);
   }
 }
 
@@ -138,9 +138,9 @@ getNonOverlap(bucket *bp1, 	// submitted bucket 1 (sorted)
               bucket **r_obp1,    // overlap of bp1
               bucket **r_obp2)    // overlap of bp2
 {
-  uint64_t *l1, *l2, *l1_last, *l2_last;
+  unsigned int *l1, *l2, *l1_last, *l2_last;
   bucket *nobp1, *nobp2, *obp1, *obp2;	// return buckets
-  uint64_t *nol1, *nol2, *ol1, *ol2;
+  unsigned int *nol1, *nol2, *ol1, *ol2;
   int compare;
 
   // We pessimistically make the worst-case sized buckets.
@@ -225,7 +225,7 @@ bucket *
 makeRandomBucketFromList(int bsize, bucket *userList)
 {
   int i, index;
-  uint64_t *lp;
+  unsigned int *lp;
   bucket *bp;
 
   bp = makeBucket(bsize);
@@ -245,14 +245,14 @@ bucket *
 makeRandomBucket(int bsize)
 {
   int i;
-  uint64_t *lp;
+  unsigned int *lp;
   bucket *bp;
 
   bp = makeBucket(bsize);
   lp = bp->list;
 
   for (i = 0; i < bsize; i++) {
-    *lp = myRand64();
+    *lp = lrand48();
     lp++;
   }
   return(bp);
@@ -267,11 +267,11 @@ freeBucket(bucket *bp)
 printBucket(bucket* bp)
 {
   int i;
-  uint64_t *lp;
+  unsigned int *lp;
 
   lp = bp->list;
   for (i = 0; i < bp->bsize; i++) {
-    printf("%4d: %lx\n", i, *lp);
+    printf("%4d: %x\n", i, *lp);
     lp++;
   }
 }
@@ -414,7 +414,7 @@ test_getNonOverlap()
 test_combineBuckets() 
 {
   bucket *bp1, *bp2, *new;
-  uint64_t *l1, *l2, *lnew;
+  unsigned int *l1, *l2, *lnew;
   int i;
 
   bp1 = makeRandomBucket(439);
@@ -455,7 +455,7 @@ test_makeRandomBucket()
   bucket *bp;
 
   bp = makeRandomBucket(20);
-  printf("\nThe following IDs should all be 64 bits long\n");
+  printf("\nThe following IDs should all be 32 bits long\n");
   printBucket(bp);
   freeBucket(bp);
   bp = makeRandomBucket(100000);
