@@ -33,7 +33,6 @@ initFilter(bucket *bp)
 compareFilterPair(one_filter *of1, one_filter *of2, compare *c)
 {
   unsigned int i;
-  uint64_t anded;
 
   c->common = 0;  c->first = 0; c->second = 0;
   for (i = 0; i < FILTER_LEN; i++) {
@@ -171,9 +170,9 @@ sizesAreClose(bucket *bp1, bucket *bp2) {
 }
 
 // bitNum is between 0 and 1023
-setFilterBit(one_filter *of, uint64_t bitNum)
+setFilterBit(one_filter *of, unsigned int bitNum)
 {
-  uint64_t fi;  // filter index
+  unsigned int fi;  // filter index
   uint64_t bitOffset = 1;
 
   fi = bitNum >> FILTER_SHIFT;
@@ -182,34 +181,21 @@ setFilterBit(one_filter *of, uint64_t bitNum)
 
 makeOneFilter(bucket *bp, int i)
 {
-  uint64_t mask_presets[MAX_LEVEL] = {
+  unsigned int mask_presets[MAX_LEVEL] = {
     0,
     0,
-    0xc000000000000000,
-    0xf000000000000000,
-    0xfc00000000000000,
-    0xff00000000000000,
-    0xffc0000000000000,
-    0xfff0000000000000,
-    0xfffc000000000000,
-    0xffff000000000000,
-    0xffffc00000000000,
-    0xfffff00000000000,
-    0xfffffc0000000000,
-    0xffffff0000000000,
-    0xffffffc000000000,
-    0xfffffff000000000,
-    0xfffffffc00000000,
-    0xffffffff00000000,
-    0xffffffffc0000000,
-    0xfffffffff0000000,
-    0xfffffffffc000000,
-    0xffffffffff000000,
-    0xffffffffffc00000,
-    0xffffffffff000000};
+    0xc0000000,
+    0xf0000000,
+    0xfc000000,
+    0xff000000,
+    0xffc00000,
+    0xfff00000,
+    0xfffc0000,
+    0xffff0000,
+    0xffffc000};
   uint64_t mask;
   int j, k;
-  uint64_t *lp;
+  unsigned int *lp;
 
   mask = mask_presets[bp->filters[i].level];
   k = 0;
@@ -284,8 +270,8 @@ test_makeFilterFromBucket()
 {
   bucket *bp;
   int j;
-  uint64_t id;
-  uint64_t *lp;
+  unsigned int id;
+  unsigned int *lp;
   int retval = 0;
 
   bp = makeBucket(32);
@@ -327,7 +313,7 @@ test_makeFilterFromBucket()
 
   bp = makeBucket(32);
   lp = bp->list;
-  id = 0x8000000000000000;
+  id = 0x80000000;
   for (j = 0; j < bp->bsize; j++) {
     *lp = id;
     id += 32;
@@ -347,7 +333,7 @@ test_makeFilterFromBucket()
 
   bp = makeBucket(210);
   lp = bp->list;
-  id = 0x8000000000000000;
+  id = 0x80000000;
   for (j = 0; j < bp->bsize; j++) {
     *lp = id;
     id += 32;
@@ -377,7 +363,7 @@ test_makeFilterFromBucket()
 
   bp = makeBucket(210);
   lp = bp->list;
-  id = 0x2000000000000000;
+  id = 0x20000000;
   for (j = 0; j < bp->bsize; j++) {
     *lp = id;
     id += 32;

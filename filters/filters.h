@@ -14,7 +14,7 @@
 #define F_ONE_MAX 0x80
 #define F_TWO_MAX (F_ONE_MAX<<2)
 #define F_THREE_MAX (F_TWO_MAX<<2)
-#define MAX_LEVEL 24  // absurdly large bucket (must be 24)
+#define MAX_LEVEL 11  // absurdly large bucket (must be 11)
 
 /*
  * level=0 means no filter
@@ -38,7 +38,7 @@ typedef struct one_filter_t {
 typedef struct bucket_t {
   one_filter filters[FILTERS_PER_BUCKET];
   int bsize;	    // number of entries
-  uint64_t *list;   // pointer to first entry
+  unsigned int *list;   // pointer to first entry
   int sorted;	    // 1 if the user list has been sorted
 } bucket;
 

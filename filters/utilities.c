@@ -160,18 +160,12 @@ getStatsInt(mystats *s, int *x, int n)
   s->sd = sqrt(s->var);
 }
 
-uint64_t
-myRand64()
-{
-  return((lrand48()<<48) ^ (lrand48()<<16) ^ lrand48());
-}
-
 countHighAndLowBits(bucket *bp)
 {
   int i;
   int high = 0;
   int low = 0;
-  uint64_t *lp;
+  unsigned int *lp;
 
   lp = bp->list;
   for (i = 0; i < bp->bsize; i++) {

@@ -577,5 +577,5 @@ main()
   // test_sizesAreClose();
   // test_hsearch();
   // test_createHighTouchTable();
-   test_highTouch();
+    test_highTouch();
 }
