@@ -232,7 +232,7 @@ makeRandomBucketFromList(int bsize, bucket *userList)
   lp = bp->list;
 
   for (i = 0; i < bsize; i++) {
-    index = getRandInteger(0, userList->bsize);
+    index = getRandInteger(0, (userList->bsize-1));
     *lp = userList->list[index];
     lp++;
   }

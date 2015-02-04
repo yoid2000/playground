@@ -31,6 +31,20 @@ initHighTouchTable()
   }
 }
 
+countNumTouches(int *numTouches, int maxNumTouches)
+{
+  int i;
+
+  for (i = 0; i < max_ht_table; i++) {
+    if (ht_table[i].touches >= (maxNumTouches-1)) {
+      numTouches[maxNumTouches-1]++;
+    }
+    else {
+      numTouches[ht_table[i].touches]++;
+    }
+  }
+}
+
 /*
  * This should be run once for the duration of the simulation,
  * and not run again.  (There is no code to free this stuff.
@@ -68,7 +82,7 @@ createHighTouchTable(int size)
     }
     lp++;
   }
-  printBucket(bp);
+  //printBucket(bp);
   return(bp);
 }
 
@@ -90,8 +104,7 @@ getHighTouch(unsigned int uid)
   }
 
   ht = (high_touch *) uhash->data;
-  printf("getHighTouch: good hsearch (uid %x, key %s!!\n", 
-             uid, ulookup.key);
+  //printf("getHighTouch: good hsearch (uid %x, key %s!!\n", uid, ulookup.key);
   
   return(ht);
 }
@@ -375,6 +388,9 @@ addNonSuppressedUsers(bucket *to, bucket *from, int type)
   fl = from->list;
   tl = &(to->list[to->bsize]);
   for (i = 0; i < from->bsize; i++) {
+if (*fl == 0) {
+  printBucket(from);
+}
     if (type == HT_ATTACK) {
       suppress = isUserSuppressAttack(*fl);
     }
@@ -388,8 +404,7 @@ addNonSuppressedUsers(bucket *to, bucket *from, int type)
       to->bsize++;
     }
     else {
-printf("-------------------%x is suppressed ----------------\n",
-        (int)(*fl & 0xffff));
+//printf("-------------------%x is suppressed ----------------\n", (int)(*fl & 0xffff));
     }
     fl++;
   }
