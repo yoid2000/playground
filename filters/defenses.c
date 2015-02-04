@@ -113,6 +113,49 @@ computeNoisyCount(bucket *bp)
   return((int)(bp->bsize + noise));
 }
 
+/*
+ * bp is the new bucket, bp1 is the former bucket being compared against
+ * returns NULL if no new bucket was created.
+ *
+ * calling routine must free returned bucket, if any
+ */
+bucket *
+checkSizesAreClose(bucket *bp, bucket *bp1)
+{
+  bucket *nobp=NULL, *obp=NULL, *nobp1=NULL, *obp1=NULL;
+
+  if (sizesAreClose(bp, bp1)) {
+    numCloseSize++;
+    // Find non-overlapping users (sort and walk):
+    sortBucketList(bp);
+    sortBucketList(bp1);
+    getNonOverlap(bp, bp1, &nobp, &nobp1, &obp, &obp1);
+    // Count non-overlapping users in high-touch hash
+    if (((nobp->bsize + nobp1->bsize) < SIZE_CLOSE_THRESH) &&
+        ((nobp->bsize + nobp1->bsize) > 0)) {
+      numSmallOverlap++;
+      // the combined non-overlap is small enough that
+      // we consider the two buckets to be near matches.
+
+      // touch the overlapping users from both buckets (note that
+      // this means that, for the former bucket, I might be touching 
+      // users more than once for the same bucket).
+      touchNonOverlappingUsers(nobp);
+      touchNonOverlappingUsers(nobp1);
+
+      // Add non-suppressed non-overlap users to overlap bucket (thus
+      // suppressing users subject to the ATTACK threshold)
+      addNonSuppressedUsers(obp, nobp, HT_ATTACK);
+      numAttackSuppressed += bp->bsize - obp->bsize;
+      free(obp1);
+      free(nobp);
+      free(nobp1);
+    }
+  }
+  // not enough overlap to generate a new overlap bucket
+  return(obp);
+}
+
 // the following threshold should catch most though not quite all near
 // matching buckets.  Because of added noise, it is not critical
 // that we catch all near matches.
@@ -135,12 +178,10 @@ putBucketDefend(bucket *bp)
   compare c;
   bucket *fbp;	// final bucket
   bucket *bp1;
-  bucket *nobp, *obp, *nobp1, *obp1;
   bucket *allbp, *attackbp;
   int noisyCount;
 
   numPutBuckets++;
-  nobp=NULL; obp=NULL; nobp1=NULL; obp1=NULL;
   makeFilterFromBucket(bp);
   if (sfIndex < maxSfIndex) {
     j = sfIndex;
@@ -166,31 +207,12 @@ putBucketDefend(bucket *bp)
 */
     if (overlap > NEAR_MATCH_THRESHOLD) {
       numNearMatch++;
-      if (sizesAreClose(bp, bp1)) {
-        numCloseSize++;
-        // Find non-overlapping users (sort and walk):
-        sortBucketList(bp);
-        sortBucketList(bp1);
-        getNonOverlap(bp, bp1, &nobp, &nobp1, &obp, &obp1);
-        // Count non-overlapping users in high-touch hash
-        if (((nobp->bsize + nobp1->bsize) < SIZE_CLOSE_THRESH) &&
-            ((nobp->bsize + nobp1->bsize) > 0)) {
-          numSmallOverlap++;
-          // the combined non-overlap is small enough that
-          // we consider the two buckets to be near matches.
-
-          // touch the overlapping users from both buckets (note that
-          // this means that, for the former bucket, I might be touching 
-          // users more than once for the same bucket).
-          touchNonOverlappingUsers(nobp);
-          touchNonOverlappingUsers(nobp1);
-
-          // Add non-suppressed non-overlap users to overlap bucket (thus
-          // suppressing users subject to the ATTACK threshold)
-          addNonSuppressedUsers(obp, nobp, HT_ATTACK);
-          attackbp = obp;
-          numAttackSuppressed += bp->bsize - attackbp->bsize;
-        }
+      // establish a parent-child link
+      // for every new MtO and OtO combination, create a "composite"
+      //     bucket (composed of combinations of children), and check for
+      //     sizes are close etc.
+      if ((attackbp = checkSizesAreClose(bp, bp1)) == NULL) {
+        attackbp = bp;
       }
     }
   }
@@ -208,10 +230,11 @@ putBucketDefend(bucket *bp)
   // note bp never freed, because stored for later comparisons
 
   noisyCount = computeNoisyCount(allbp);
-  if (nobp) { freeBucket(nobp); }
-  if (obp) { freeBucket(obp); }
-  if (nobp1) { freeBucket(nobp1); }
-  if (obp1) { freeBucket(obp1); }
+
+  if (attackbp != bp) { 
+    // bucket was created in checkSizesAreClose()
+    freeBucket(attackbp);
+  }
   freeBucket(allbp);
   return(noisyCount);
 }
