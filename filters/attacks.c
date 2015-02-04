@@ -51,7 +51,7 @@ makeChaffBuckets(bucket *userList, int low, int high, int defend) {
       // should never happen
         absNumOverlap = bsize1;
       }
-      // printf("Attack absNumOverlap %d (of %d)\n", absNumOverlap, bsize1);
+      //printf("Attack absNumOverlap %d (of %d)\n", absNumOverlap, bsize1);
       makeCompareBucketFixed(bp1, bp2, absNumOverlap);
     }
     else {
@@ -64,21 +64,24 @@ makeChaffBuckets(bucket *userList, int low, int high, int defend) {
   }
 }
 
+#define VICTIM_FIRST 1
+#define VICTIM_LAST 2
+
 int
-oneNaiveDiffAttack(int numSamples, bucket *userList, int defend)
+oneNaiveDiffAttack(int numSamples, bucket *userList, int defend, int order)
 {
   int i;
   int sum1=0, sum2=0;
   int noisyCount;
   float av1, av2;
-  bucket *bp1, *bp2, *vbp;  // *vbp = victim
+  bucket *bp1, *bp2, *vbp, *temp;  // *vbp = victim
 
   // In the naive diff attack, one set of buckets will have the victim
   // if the victim has the attribute, and the other set of buckets will
   // have the victim otherwise.  Therefore for the sake of this simulation,
   // it doesn't matter which set we put the victim in.
   vbp = makeRandomBucketFromList(1, userList);
-  printf("********VICTIM is %x********\n", vbp->list[0]);
+  //printf("********VICTIM is %x********\n", vbp->list[0]);
   makeChaffBuckets(userList, 25, 75, defend);
   for (i = 0; i < numSamples; i++){
     // There is a chance the victim will be in this bucket too
@@ -86,6 +89,10 @@ oneNaiveDiffAttack(int numSamples, bucket *userList, int defend)
     bp1 = makeRandomBucketFromList(getRandInteger(20, 200), userList);
     bp2 = combineBuckets(bp1, vbp);
     // bp1 and bp2 are identical, except bp2 has victim
+    if (order == VICTIM_FIRST) {
+      // make bp1 hold the victim
+      temp = bp1; bp1 = bp2; bp2 = temp;
+    }
     noisyCount = putBucket(bp1, defend);
     accuracy[accIndex++] = bp1->bsize - noisyCount;
     sum1 += noisyCount;
@@ -106,7 +113,7 @@ oneNaiveDiffAttack(int numSamples, bucket *userList, int defend)
   }
 }
 
-runNaiveDiffAttack(bucket *userList, int defend)
+runNaiveDiffAttack(bucket *userList, int defend, int order)
 {
   int confidence;   // between 0 and 100 percent
   int i, numSamples, answer;
@@ -115,13 +122,14 @@ runNaiveDiffAttack(bucket *userList, int defend)
   mystats S;
   
   for (numSamples = 5; numSamples < 81; numSamples *= 2) {
+    initDefenseStats();
     accSize = numSamples * NUM_ROUNDS * 2;
     accuracy = (int *) calloc(accSize, sizeof (int *));
     accIndex = 0;
     rightGuesses = 0;
     for (i = 0; i < NUM_ROUNDS; i++) {
       initDefense(10000);
-      answer = oneNaiveDiffAttack(numSamples, userList, defend);
+      answer = oneNaiveDiffAttack(numSamples, userList, defend, order);
       endDefense();
       if (answer == VICTIM_HAS_ATTRIBUTE) {
         rightGuesses++;
@@ -138,6 +146,7 @@ runNaiveDiffAttack(bucket *userList, int defend)
            (int)(((float) rightGuesses / (float) NUM_ROUNDS) * 100.0),
            S.av, S.sd, S.min, S.max);
     free(accuracy);
+    computeDefenseStats(NUM_ROUNDS);
   }
 }
 
@@ -153,5 +162,5 @@ main()
   //printf("Naive Diff Attack, no defense:\n");
   //runNaiveDiffAttack(userList, 0);
   printf("Naive Diff Attack, with defense:\n");
-  runNaiveDiffAttack(userList, 1);
+  runNaiveDiffAttack(userList, 1, VICTIM_LAST);
 }
