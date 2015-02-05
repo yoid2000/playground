@@ -137,14 +137,8 @@ isUserSuppress(unsigned int uid, int threshold)
 
   ht = getHighTouch(uid);
 
-  ht->counts++;
   if (exceedsNoisyThreshold(threshold, ht->touches, HT_NOISE_SD)) {
     suppress = 1;
-  }
-  if (ht->counts > ht->decrementThreshold) {
-    // this user hasn't been touched in a while
-    ht->counts = 0;
-    if (ht->touches > 0) {ht->touches--;}
   }
   return(suppress);
 }
@@ -177,6 +171,25 @@ touchNonOverlappingUsers(bucket *bp)
   lp = bp->list;
   for (i = 0; i < bp->bsize; i++) {
     touchUser(*lp);
+    lp++;
+  }
+}
+
+countUsers(bucket *bp)
+{
+  int i;
+  unsigned int *lp;
+  high_touch *ht;
+
+  lp = bp->list;
+  for (i = 0; i < bp->bsize; i++) {
+    ht = getHighTouch(*lp);
+    ht->counts++;
+    if (ht->counts > ht->decrementThreshold) {
+      // this user hasn't been touched in a while
+      ht->counts = 0;
+      if (ht->touches > 0) {ht->touches--;}
+    }
     lp++;
   }
 }
