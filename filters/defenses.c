@@ -16,6 +16,8 @@ extern bucket *getNonOverlap(bucket *arg1, bucket *arg2,
                              bucket **arg4, 
                              bucket **arg5, 
                              bucket **arg6);
+extern int exceedsNoisyThreshold(float arg1, float arg2, float arg3);
+extern int countUsers(bucket *arg1);
 
 
 bucket **storedFilters;
@@ -29,6 +31,7 @@ int numNearMatch;
 int numCloseSize;
 int numSmallOverlap;
 int numPutBuckets;
+int numLowCount;
 int numAllSuppressed;
 int numAttackSuppressed;
 
@@ -48,6 +51,7 @@ initDefenseStats()
     numTouches[i] = 0;
   }
   numPutBuckets = 0;
+  numLowCount = 0;
   numComparisons = 0;
   numNearMatch = 0;
   numCloseSize = 0;
@@ -63,15 +67,22 @@ computeDefenseStats(int numRounds)
   printf("Num Touches Histogram:\n");
   for (i = 0; i < MAX_TOUCH_COUNT; i++) {
     if (numTouches[i] != 0) {
-      printf("    %d: %.2f\n", i, (float)((float)numTouches[i]/(float)numRounds));
+      printf("    %d: %.2f\n", i, 
+             (float)((float)numTouches[i]/(float)numRounds));
     }
   }
-  printf("%.2f buckets, %.2f bucket pairs\n", (float)((float)numPutBuckets/(float)numRounds), (float)((float)numComparisons/(float)numRounds));
-  printf("%.2f (%d%%) near matches\n", (float)((float)numNearMatch/(float)numRounds), 
+  printf("%.2f buckets (%.2f low count), %.2f bucket pairs\n", 
+         (float)((float)numPutBuckets/(float)numRounds), 
+         (float)((float)numLowCount/(float)numRounds), 
+         (float)((float)numComparisons/(float)numRounds));
+  printf("%.2f (%d%%) near matches\n", 
+         (float)((float)numNearMatch/(float)numRounds), 
           (int)((float)(numNearMatch*100)/(float) numComparisons));
-  printf("%.2f (%d%%) close sizes\n", (float)((float)numCloseSize/(float)numRounds), 
+  printf("%.2f (%d%%) close sizes\n", 
+         (float)((float)numCloseSize/(float)numRounds), 
           (int)((float)(numCloseSize*100)/(float) numNearMatch));
-  printf("%.2f (%d%%) small overlaps\n", (float)((float)numSmallOverlap/(float)numRounds), 
+  printf("%.2f (%d%%) small overlaps\n", 
+         (float)((float)numSmallOverlap/(float)numRounds), 
           (int)((float)(numSmallOverlap*100)/(float) numCloseSize));
   printf("Average %.2f attack-suppressed users per checked bucket\n",
           (float)((float)numAttackSuppressed/(float) numSmallOverlap));
@@ -114,25 +125,24 @@ computeNoisyCount(bucket *bp)
 }
 
 /*
- * bp is the new bucket, bp1 is the former bucket being compared against
- * returns NULL if no new bucket was created.
- *
- * calling routine must free returned bucket, if any
+ * Doesn't matter which bucket is bp1 or bp2.
+ * Returns 1 if buckets are true near matches
+ * returns 0 otherwise
  */
-bucket *
-checkSizesAreClose(bucket *bp, bucket *bp1)
+int
+checkNearMatchAndTouchNonOverlap(bucket *bp1, bucket *bp2)
 {
-  bucket *nobp=NULL, *obp=NULL, *nobp1=NULL, *obp1=NULL;
+  bucket *nobp2=NULL, *obp2=NULL, *nobp1=NULL, *obp1=NULL;
 
-  if (sizesAreClose(bp, bp1)) {
+  if (sizesAreClose(bp1, bp2)) {
     numCloseSize++;
     // Find non-overlapping users (sort and walk):
-    sortBucketList(bp);
     sortBucketList(bp1);
-    getNonOverlap(bp, bp1, &nobp, &nobp1, &obp, &obp1);
+    sortBucketList(bp2);
+    getNonOverlap(bp1, bp2, &nobp1, &nobp2, &obp1, &obp2);
     // Count non-overlapping users in high-touch hash
-    if (((nobp->bsize + nobp1->bsize) < SIZE_CLOSE_THRESH) &&
-        ((nobp->bsize + nobp1->bsize) > 0)) {
+    if (((nobp2->bsize + nobp1->bsize) < SIZE_CLOSE_THRESH) &&
+        ((nobp2->bsize + nobp1->bsize) > 0)) {
       numSmallOverlap++;
       // the combined non-overlap is small enough that
       // we consider the two buckets to be near matches.
@@ -140,26 +150,74 @@ checkSizesAreClose(bucket *bp, bucket *bp1)
       // touch the overlapping users from both buckets (note that
       // this means that, for the former bucket, I might be touching 
       // users more than once for the same bucket).
-      touchNonOverlappingUsers(nobp);
+      touchNonOverlappingUsers(nobp2);
       touchNonOverlappingUsers(nobp1);
-
-      // Add non-suppressed non-overlap users to overlap bucket (thus
-      // suppressing users subject to the ATTACK threshold)
-      addNonSuppressedUsers(obp, nobp, HT_ATTACK);
-      numAttackSuppressed += bp->bsize - obp->bsize;
       free(obp1);
-      free(nobp);
+      free(obp2);
       free(nobp1);
+      free(nobp2);
+      return(1);
     }
   }
+  return(0);
+}
+
+/*
+ * bp is the new bucket that I'm suppressing from.
+ * bp1 is the former bucket being compared against.
+ * I might have already done some suppression on bp.
+ *
+ * calling routine must free returned bucket
+ */
+bucket *
+getNonOverlapAndSuppress(bucket *bp, bucket *bp1)
+{
+  bucket *nobp=NULL, *obp=NULL, *nobp1=NULL, *obp1=NULL;
+
+  // Find non-overlapping users (sort and walk):
+  sortBucketList(bp);
+  sortBucketList(bp1);
+
+  getNonOverlap(bp, bp1, &nobp, &nobp1, &obp, &obp1);
+
+  if ((nobp->bsize + nobp1->bsize) >= SIZE_CLOSE_THRESH) {
+    printf("getNonOverlapAndSuppress: unexpected sizes, nobp %d, nopd1 %d\n",
+            nobp->bsize, nobp1->bsize);
+    exit(1);
+  }
+  // Add non-suppressed non-overlap users to overlap bucket (thus
+  // suppressing users subject to the ATTACK threshold)
+
+//printf("bp->bsize %d, obp->bsize %d, nobp->bsize %d\n", bp->bsize, obp->bsize, nobp->bsize);
+  if (nobp->bsize) {
+    addNonSuppressedUsers(obp, nobp, HT_ATTACK);
+    numAttackSuppressed += bp->bsize - obp->bsize;
+  }
+  free(obp1);
+  free(nobp);
+  free(nobp1);
+
   // not enough overlap to generate a new overlap bucket
   return(obp);
+}
+
+addChildLink(bucket *parent, int child_index)
+{
+  if (parent->numChildren >= MAX_CHILDREN) {
+    printf("addChildLink: Exceeded MAX_CHILDREN!!\n");
+    exit(1);
+  }
+  parent->children[parent->numChildren] = child_index;
+  parent->numChildren++;
 }
 
 // the following threshold should catch most though not quite all near
 // matching buckets.  Because of added noise, it is not critical
 // that we catch all near matches.
 #define NEAR_MATCH_THRESHOLD 90
+#define LOW_COUNT_SOFT_THRESHOLD 5
+#define LOW_COUNT_HARD_THRESHOLD 1
+#define LOW_COUNT_SD 1
 /*
  *  This routine operates on one bucket at a time.  This means that if
  *  the current bucket is a near match with a former bucket, then the
@@ -178,10 +236,22 @@ putBucketDefend(bucket *bp)
   compare c;
   bucket *fbp;	// final bucket
   bucket *bp1;
-  bucket *allbp, *attackbp;
-  int noisyCount;
+  bucket *allbp, *suppressbp, *temp;
+  int noisyCount, nearMatch;
 
   numPutBuckets++;
+
+  countUsers(bp);
+
+  // do low-count filter early-on.  If fails, then we don't even
+  // bother to remember the bucket.   Attacker can't do anything with this.
+  if ((bp->bsize <= LOW_COUNT_HARD_THRESHOLD) || 
+      (exceedsNoisyThreshold((float)LOW_COUNT_SOFT_THRESHOLD,
+                     (float) bp->bsize, (float) LOW_COUNT_SD) == 0)) {
+    numLowCount++;
+    return(0);
+  }
+
   makeFilterFromBucket(bp);
   if (sfIndex < maxSfIndex) {
     j = sfIndex;
@@ -192,7 +262,12 @@ putBucketDefend(bucket *bp)
     exit(1);
   }
 
-  attackbp = bp;
+  // It is probably wasteful to duplicate bp here, but 
+  // at all times, suppressbp will point to a bucket that is missing
+  // suppressed users (from the original bucket bp).  suppressbp may
+  // be generated several times, depending on the attack scenarios
+  // discovered.
+  suppressbp = dupBucket(bp);
   for (i = 0; i < j; i++) {
     numComparisons++;
     bp1 = storedFilters[i];
@@ -207,35 +282,53 @@ putBucketDefend(bucket *bp)
 */
     if (overlap > NEAR_MATCH_THRESHOLD) {
       numNearMatch++;
-      // establish a parent-child link
       // for every new MtO and OtO combination, create a "composite"
       //     bucket (composed of combinations of children), and check for
       //     sizes are close etc.
-      if ((attackbp = checkSizesAreClose(bp, bp1)) == NULL) {
-        attackbp = bp;
+      // first check OtO
+      nearMatch = checkNearMatchAndTouchNonOverlap(bp, bp1);
+      if (nearMatch == 1) {
+        temp = getNonOverlapAndSuppress(suppressbp, bp1);
+        if (temp != suppressbp) {
+          freeBucket(suppressbp);
+          suppressbp = temp;
+        }
       }
+      // next add child link
+      if (bp->bsize >= (bp1->bsize + LOW_COUNT_SOFT_THRESHOLD)) {
+        // new bucket bp is a parent of former bucket pb1
+        addChildLink(bp, i);
+        // check children combinations of zzzz
+        // if ((suppressbp = checkAllChildCombinations(suppressbp)
+      }
+      else if (bp->bsize <= (bp1->bsize - LOW_COUNT_SOFT_THRESHOLD)) {
+        // former bucket bp1 is a parent of new bucket pb
+        addChildLink(bp1, j);
+      }
+      // Now check all of the children combinations
+// zzzz
     }
   }
   // At this point, all users that should be suppressed because of the
   // ATTACK threshold have been removed.  But not users that should be
   // suppressed because of the higher ALL threshold.  So remove those
   // users now.
-  allbp = makeBucket(attackbp->bsize);
+  allbp = makeBucket(suppressbp->bsize);
   allbp->bsize = 0;
 
-  // allbp has allocated space for all of attackbp, but no users:
+  // allbp has allocated space for all of suppressbp, but no users:
   // copy non suppressed users into allbp
-  addNonSuppressedUsers(allbp, attackbp, HT_ALL);
-  numAllSuppressed += attackbp->bsize - allbp->bsize;
-  // note bp never freed, because stored for later comparisons
+  addNonSuppressedUsers(allbp, suppressbp, HT_ALL);
+  numAllSuppressed += suppressbp->bsize - allbp->bsize;
 
   noisyCount = computeNoisyCount(allbp);
 
-  if (attackbp != bp) { 
+  if (suppressbp != bp) { 
     // bucket was created in checkSizesAreClose()
-    freeBucket(attackbp);
+    freeBucket(suppressbp);
   }
   freeBucket(allbp);
+  // note bp never freed, because stored for later comparisons
   return(noisyCount);
 }
 

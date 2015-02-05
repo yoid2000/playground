@@ -26,6 +26,7 @@ makeBucket(int bsize)
   bp->list = (unsigned int *) calloc(bsize, sizeof(unsigned int));
   bp->bsize = bsize;
   initFilter(bp);
+  bp->numChildren = 0;
 
   return(bp);
 }
