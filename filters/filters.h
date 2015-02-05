@@ -58,3 +58,9 @@ typedef struct compare_t {
   int overlap;
 } compare;
 
+
+typedef struct child_comb_t {
+  unsigned int maxComb;
+  unsigned int mask;
+  bucket *cbp;
+} child_comb;
