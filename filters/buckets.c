@@ -282,8 +282,8 @@ printBucket(bucket* bp)
 
 bucket *
 getNextChildComb(child_comb *c, 
-                  bucket *pbp, 
-                  bucket *cbp,
+                  bucket *pbp,   // parent
+                  bucket *cbp,   // child (if new bucket is child)
                   bucket **sf,
                   int sfMax)
 {
@@ -296,9 +296,11 @@ getNextChildComb(child_comb *c,
   // return, c->mask is the actual mask used for the composite
   c->mask++;
 
-  // skip masks with only one child (one bit)
-  while (__builtin_popcount(c->mask) < 2) {
-    c->mask++;
+  if (cbp == NULL) {
+    // skip masks with only one child (one bit)
+    while (__builtin_popcount(c->mask) < 2) {
+      c->mask++;
+    }
   }
   if (c->mask > c->maxComb) {
     return(NULL);  // all done
@@ -332,17 +334,18 @@ getNextChildComb(child_comb *c,
 
 bucket *
 getFirstChildComb(child_comb *c, 
-                  bucket *pbp, 
-                  bucket *cbp, 
+                  bucket *pbp,     // parent
+                  bucket *cbp,     // child (if new bucket is child)
                   bucket **sf,
                   int sfMax)
 {
-  if (pbp->numChildren < 2) {
+  if ((pbp->numChildren == 0) ||
+      ((cbp == NULL) && (pbp->numChildren < 2))) {
     return(NULL);      // nothing to compare
   }
   // set a mask with a '1' for every child
   c->maxComb = getMaxComb(pbp->numChildren);
-  // initialize the mask to something before the true first mask (=3),
+  // initialize the mask to zero
   // because getNextChildComb() starts by incrementing the mask
   c->mask = 0;
   return(getNextChildComb(c, pbp, cbp, sf, sfMax));
@@ -393,6 +396,10 @@ checkComposite(unsigned int mask,
       checkUsersInComposite(bp, cobp, testNum);
     }
     bit <<= 1;
+  }
+  if (cbp) {
+    bsize += cbp->bsize;
+    checkUsersInComposite(cbp, cobp, testNum);
   }
   if (bsize != cobp->bsize) {
     printf("checkComposite FAIL F2%d (bsize = %d, cobp->bsize = %d, mask = %d)\n", 
@@ -453,6 +460,39 @@ test_childCombIterator()
       exit(1);
     }
   }
+
+  // now test case where the new bucket nbp is a child:
+  nbp = makeRandomBucket(25);
+  pbp = sf[0];
+  pbp->numChildren = 0;
+  if ((cobp = getFirstChildComb(&c, pbp, nbp, sf, sfMax)) != NULL) {
+    printf("test_childCombIterator FAIL F11!\n"); exit(1);
+  }
+
+  for (j = 0; j <= 5; j++) {
+    pbp->numChildren++;
+    pbp->children[pbp->numChildren-1] = pbp->numChildren;
+    if ((cobp = getFirstChildComb(&c, pbp, nbp, sf, sfMax)) == NULL) {
+      printf("test_childCombIterator FAIL F31%d!\n", j); exit(1);
+    }
+    if (c.mask != 1) {
+      printf("test_childCombIterator FAIL F51%d!\n", j); exit(1);
+    }
+    checkComposite(c.mask, cobp, pbp, nbp, sf, sfMax, 8*10);
+    for (i = 0; 1; i++) {
+      if ((cobp = getNextChildComb(&c, pbp, nbp, sf, sfMax)) == NULL) {
+        break;
+      }
+      checkComposite(c.mask, cobp, pbp, nbp, sf, sfMax, (8*10)+i);
+    }
+    n = pbp->numChildren;
+    ncr = pow(2, n) - 1;
+    if (ncr != (i+1)) {
+      printf("test_childCombIterator FAIL F61%d! (%d, %d, %d)\n", j, n, ncr, i); 
+      exit(1);
+    }
+  }
+
   printf("test_childCombIterator passed (%d checks).\n", numCCChecks);
 }
 
