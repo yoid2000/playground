@@ -5,6 +5,28 @@
 #include "./filters.h"
 #include "./normalDist.h"
 
+long int fact( int x)
+{
+  long int f=1;
+  int i;
+  for(i=1;i<=x;i++)
+    f=f*i;
+  return(f);
+}
+
+unsigned int
+getMaxComb(int numChildren)
+{
+  unsigned int i, maxComb;
+
+  maxComb = 1;
+  for (i = 0; i < numChildren-1; i++) {
+    maxComb = (maxComb << 1) | 1;
+  }
+  return(maxComb);
+}
+
+
 int
 getRandInteger(int min_size, int max_size)
 {
@@ -178,6 +200,22 @@ countHighAndLowBits(bucket *bp)
 
 
 /*********** TESTS **********/
+
+test_getMaxComb()
+{
+  int maxComb; 
+
+  if ((maxComb = getMaxComb(2)) != 0x3) {
+    printf("get_getMaxComb() failed F1! (%d)\n", maxComb); exit(1);
+  }
+  if ((maxComb = getMaxComb(3)) != 0x7) {
+    printf("get_getMaxComb() failed F2! (%d)\n", maxComb); exit(1);
+  }
+  if ((maxComb = getMaxComb(4)) != 0xf) {
+    printf("get_getMaxComb() failed F3! (%d)\n", maxComb); exit(1);
+  }
+  printf("get_getMaxComb() passed\n");
+}
 
 test_getNormal()
 {

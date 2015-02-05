@@ -431,7 +431,8 @@ test_setLevelsBasedOnBucketSize()
 
 #define BILLION 1000000000L
 #define NUM_RUNS 1000000L
-runCompareFiltersSpeedTests() {
+runCompareFiltersSpeedTests()
+{
   struct timespec start, end;
   unsigned long diff;
   one_filter of1, of2;
@@ -444,6 +445,32 @@ runCompareFiltersSpeedTests() {
   clock_gettime(CLOCK_MONOTONIC, &start);
   for (i = 0; i < NUM_RUNS; i++) {
     compareFilterPair(&of1, &of2, &c);
+  }
+  clock_gettime(CLOCK_MONOTONIC, &end);
+
+  diff = BILLION * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec;
+  printf("Elapsed time = %llu nanoseconds\n", (long long unsigned int) diff);
+  printf("Time per run = %d nanoseconds\n", (int) (diff / NUM_RUNS));
+  printf("Throughput is %d compares per second\n", (int) (BILLION / (diff / NUM_RUNS)));
+}
+
+runCompareFullFiltersSpeedTests()
+{
+  struct timespec start, end;
+  unsigned long diff;
+  unsigned long i;
+  compare c;
+  bucket *bp1, *bp2;
+
+  bp1 = makeRandomBucket(100);
+  bp2 = makeRandomBucket(1000);
+  makeFilterFromBucket(bp1);
+  makeFilterFromBucket(bp2);
+
+
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  for (i = 0; i < NUM_RUNS; i++) {
+    compareFullFilters(bp1, bp2, &c);
   }
   clock_gettime(CLOCK_MONOTONIC, &end);
 

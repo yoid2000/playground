@@ -66,7 +66,7 @@ computeOverlapValues(int maxBucket,
     printf("Failed to fopen file %s\n", fileloc);
     exit(1);
   }
-  fprintf(scatter, "# bsize1 bsize2 numFirst numSecond level 0:1 1:1 0:0 sizeRatio overlap\n");
+  fprintf(scatter, "# bsize1 bsize2 numFirst numSecond level 0:1 1:1 0:0 sizeRatio trueOverlap computedOverlap overlapDiff\n");
 
 
   sprintf(fileloc, "%s/%d.%d.%d.%d.overlapDiff.data", dir, 

@@ -1,10 +1,12 @@
-
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include "./utilities.h"
 #include "./filters.h"
 
+// needed for test_childCombIterator
+bucket **storedFilters;
+int sfIndex;
 
 main()
 {
@@ -22,4 +24,7 @@ main()
   // test_hsearch();
   // test_createHighTouchTable();
   // test_highTouch();
+  // test_getMaxComb();
+  test_childCombIterator();
+  // runCompareFullFiltersSpeedTests();
 }
