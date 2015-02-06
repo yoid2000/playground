@@ -161,6 +161,6 @@ main()
 
   //printf("Naive Diff Attack, no defense:\n");
   //runNaiveDiffAttack(userList, 0);
-  printf("Naive Diff Attack, with defense, victim last:\n");
-  runNaiveDiffAttack(userList, 1, VICTIM_LAST);
+  printf("Naive Diff Attack, with defense, victim first:\n");
+  runNaiveDiffAttack(userList, 1, VICTIM_FIRST);
 }
