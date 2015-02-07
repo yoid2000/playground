@@ -201,8 +201,8 @@ main()
   userList = createHighTouchTable(USER_LIST_SIZE);
 
   as.attack = OtO_ATTACK;
-  as.defense = BASIC_DEFENSE;
-  //as.defense = OtO_DEFENSE;
+  //as.defense = BASIC_DEFENSE;
+  as.defense = OtO_DEFENSE;
   as.order = VICTIM_LAST;
   //as.order = VICTIM_FIRST;
   as.attribute = VICTIM_ATTRIBUTE_YES;

@@ -310,9 +310,10 @@ checkAllChildCombinations(bucket *pbp,     // parent
  *  so victims in all attack buckets can be suppressed.  (Of course, a
  *  smart attacker wouldn't do it this way  ;)
  *
- * returns a noisy integer count (not rounded to nearest 5)
+ * returns a possibly-suppressed bucket
+ * calling routine must free the returned bucket
  */
-int
+bucket *
 putBucketDefend(bucket *bp) 
 {
   int i, j, overlap;
@@ -320,20 +321,9 @@ putBucketDefend(bucket *bp)
   bucket *fbp;	// final bucket
   bucket *bp1;
   bucket *allbp, *suppressbp, *temp;
-  int noisyCount, nearMatch, childAdded;
-
-  numPutBuckets++;
+  int nearMatch, childAdded;
 
   countUsers(bp);
-
-  // do low-count filter early-on.  If fails, then we don't even
-  // bother to remember the bucket.   Attacker can't do anything with this.
-  if ((bp->bsize <= LOW_COUNT_HARD_THRESHOLD) || 
-      (exceedsNoisyThreshold((float)LOW_COUNT_SOFT_THRESHOLD,
-                     (float) bp->bsize, (float) LOW_COUNT_SD) == 0)) {
-    numLowCount++;
-    return(0);
-  }
 
   makeFilterFromBucket(bp);
   if (sfIndex < maxSfIndex) {
@@ -402,27 +392,38 @@ putBucketDefend(bucket *bp)
   addNonSuppressedUsers(allbp, suppressbp, HT_ALL);
   numAllSuppressed += suppressbp->bsize - allbp->bsize;
 
-  noisyCount = computeNoisyCount(allbp);
 
   freeBucket(suppressbp);
-  freeBucket(allbp);
-  // note bp never freed, because stored for later comparisons
-  return(noisyCount);
-}
-
-int
-putBucketCrap(bucket *bp) 
-{
-  int noisyCount;
-
-  noisyCount = computeNoisyCount(bp);
-  freeBucket(bp);
-  return(noisyCount);
+  return(allbp);
 }
 
 int
 putBucket(bucket *bp, attack_setup *as)
 {
-  if (as->defense == OtO_DEFENSE) {return(putBucketDefend(bp));}
-  else if (as->defense == BASIC_DEFENSE) {return(putBucketCrap(bp));}
+  bucket *allbp;
+  int noisyCount;
+
+  numPutBuckets++;
+
+  // do low-count filter early-on.  If fails, then we don't even
+  // bother to remember the bucket.   Attacker can't do anything with this.
+  if ((bp->bsize <= LOW_COUNT_HARD_THRESHOLD) || 
+      (exceedsNoisyThreshold((float)LOW_COUNT_SOFT_THRESHOLD,
+                     (float) bp->bsize, (float) LOW_COUNT_SD) == 0)) {
+    numLowCount++;
+    return(0);
+  }
+
+  if (as->defense > BASIC_DEFENSE) {
+    // putBucketDefend stores the bp in a data structure for future use.
+    // Note that if we don't call putBucketDefend, we still don't bother
+    // to free the bucket.  This is intentional and not a problem.
+    allbp = putBucketDefend(bp);
+    noisyCount = computeNoisyCount(allbp);
+  }
+  else {
+    noisyCount = computeNoisyCount(bp);
+  }
+
+  return(noisyCount);
 }
