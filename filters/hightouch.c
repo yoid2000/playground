@@ -163,6 +163,23 @@ isUserSuppressAttack(int uid)
   return(isUserSuppress(uid, HT_ATTACK_SUPPRESS_THRESH));
 }
 
+int
+countHighTouch(bucket *bp)
+{
+  int i;
+  unsigned int *lp;
+  int numHighTouch=0;
+
+  lp = bp->list;
+  for (i = 0; i < bp->bsize; i++) {
+    if (isUserSuppressAttack(*lp)) {
+      numHighTouch++;
+    }
+    lp++;
+  }
+  return(numHighTouch);
+}
+
 touchNonOverlappingUsers(bucket *bp)
 {
   int i;

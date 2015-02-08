@@ -195,7 +195,7 @@ main()
   as.attack_str[MtO_ATTACK] = "MtO attack"; 
   as.attack_str[MtM_ATTACK] = "MtM attack";
 
-  srand48((long int) 1);
+  srand48((long int) 2);
 
   // Make complete list of users used for all attacks
   userList = createHighTouchTable(USER_LIST_SIZE);
