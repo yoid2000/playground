@@ -29,6 +29,7 @@ extern bucket * getNextChildComb(child_comb *c,
                                   bucket *cbp,
                                   bucket **sf,
                                   int sfMax);
+extern int countHighTouch(bucket *arg1);
 
 
 
@@ -44,8 +45,7 @@ int numCloseSize;
 int numSmallOverlap;
 int numPutBuckets;
 int numLowCount;
-int numAllSuppressed;
-int numAttackSuppressed;
+int numAdjust;
 
 initDefense(int maxBuckets) {
   storedFilters = (bucket **) calloc(maxBuckets, sizeof(bucket *));
@@ -68,8 +68,7 @@ initDefenseStats()
   numPassDigest = 0;
   numCloseSize = 0;
   numSmallOverlap = 0;
-  numAttackSuppressed = 0;
-  numAllSuppressed = 0;
+  numAdjust = 0;
 }
 
 computeDefenseStats(int numRounds, attack_setup *as)
@@ -97,10 +96,8 @@ computeDefenseStats(int numRounds, attack_setup *as)
     printf("%.2f (%d%%) small overlaps\n", 
            (float)((float)numSmallOverlap/(float)numRounds), 
             (int)((float)(numSmallOverlap*100)/(float) numCloseSize));
-    printf("Average %.2f attack-suppressed users per checked bucket\n",
-            (float)((float)numAttackSuppressed/(float) numSmallOverlap));
-    printf("Average %.2f all-suppressed users per checked bucket\n",
-            (float)((float)numAllSuppressed/(float) numSmallOverlap));
+    printf("Average %.2f adjusted users per checked bucket\n",
+            (float)((float)numAdjust/(float) numSmallOverlap));
   }
 }
 
@@ -144,22 +141,23 @@ computeNoisyCount(bucket *bp)
  * returns 0 otherwise
  */
 int
-checkNearMatchAndTouchNonOverlap(bucket *bp1, bucket *bp2)
+checkNearMatchAndTouchNonOverlap(bucket *new_bp, bucket *old_bp)
 {
-  bucket *nobp2=NULL, *obp2=NULL, *nobp1=NULL, *obp1=NULL;
+  bucket *old_nobp=NULL, *old_obp=NULL, *new_nobp=NULL, *new_obp=NULL;
+  int adjustment=0;
 
-  if (sizesAreClose(bp1, bp2)) {
+  if (sizesAreClose(new_bp, old_bp)) {
     // the exact bucket size (stored with the filter) provides
     // further evidence that this may be an attack.  So now we
     // need to re-query the other bucket and check exact overlap.
     numCloseSize++;
     // Find non-overlapping users (sort and walk):
-    sortBucketList(bp1);
-    sortBucketList(bp2);
-    getNonOverlap(bp1, bp2, &nobp1, &nobp2, &obp1, &obp2);
+    sortBucketList(new_bp);
+    sortBucketList(old_bp);
+    getNonOverlap(new_bp, old_bp, &new_nobp, &old_nobp, &new_obp, &old_obp);
     // Count non-overlapping users in high-touch hash
-    if (((nobp2->bsize + nobp1->bsize) < SIZE_CLOSE_THRESH) &&
-        ((nobp2->bsize + nobp1->bsize) > 0)) {
+    if (((old_nobp->bsize + new_nobp->bsize) < SIZE_CLOSE_THRESH) &&
+        ((old_nobp->bsize + new_nobp->bsize) > 0)) {
       numSmallOverlap++;
       // the combined non-overlap is small enough that
       // we consider the two buckets to be near matches.
@@ -167,58 +165,21 @@ checkNearMatchAndTouchNonOverlap(bucket *bp1, bucket *bp2)
       // touch the overlapping users from both buckets (note that
       // this means that, for the former bucket, I might be touching 
       // users more than once for the same bucket).
-      touchNonOverlappingUsers(nobp2);
-      touchNonOverlappingUsers(nobp1);
-      free(obp1);
-      free(obp2);
-      free(nobp1);
-      free(nobp2);
-      return(1);
+      touchNonOverlappingUsers(old_nobp);
+      touchNonOverlappingUsers(new_nobp);
+      // The non-overlapping users in the former bucket might be attack
+      // victims, so we "add" them to the new bucket to compensate
+      adjustment += countHighTouch(old_nobp);
+      // The non-overlapping users in the new bucket might als be attack
+      // victims, so we "remove" them from the new bucket to compensate
+      adjustment -= countHighTouch(new_nobp);
+      free(new_obp);
+      free(old_obp);
+      free(new_nobp);
+      free(old_nobp);
     }
   }
-  return(0);
-}
-
-/*
- * sbp is the new bucket that I'm suppressing from.
- * bp1 is what I'm comparing against.  
- *
- * In OtO case, bp1 is the former bucket.
- * In MtO case where sbp is the parent, then bp1 is the composite child.
- * In MtO case where sdp is the child, then bp1 is the former parent.
- *
- * I might have already done some suppression on sbp.
- * This routine replaces sbp with a potentially more-
- * suppressed bucket, and frees sbp.
- *
- * calling routine must free returned bucket
- */
-bucket *
-getNonOverlapAndSuppress(bucket *sbp, bucket *bp1)
-{
-  bucket *nobp=NULL, *obp=NULL, *nobp1=NULL, *obp1=NULL;
-
-  // Find non-overlapping users (sort and walk):
-  sortBucketList(sbp);
-  sortBucketList(bp1);
-
-  getNonOverlap(sbp, bp1, &nobp, &nobp1, &obp, &obp1);
-  // nobp is the non-overlap for sbp, and obp is the overlap
-  // (for both buckets, actually).  obp + nobp = sbp.
-
-  // Add non-suppressed non-overlap users to overlap bucket (thus
-  // suppressing users subject to the ATTACK threshold)
-  if (nobp->bsize) {
-    addNonSuppressedUsers(obp, nobp, HT_ATTACK);
-    numAttackSuppressed += sbp->bsize - obp->bsize;
-  }
-  freeBucket(obp1);
-  freeBucket(nobp);
-  freeBucket(nobp1);
-  freeBucket(sbp);
-
-  // not enough overlap to generate a new overlap bucket
-  return(obp);
+  return(adjustment);
 }
 
 addChildLink(bucket *parent, int child_index)
@@ -236,37 +197,30 @@ addChildLink(bucket *parent, int child_index)
  * returns suppressed bucket sbp.  If returned sbp different than
  * calling sbp, then calling sbp will have been freed. 
  */
-bucket *
+int
 checkAllChildCombinations(bucket *pbp,     // parent
-                          bucket *cbp,     // child, if new bucket is child
-                          bucket *sbp)     // suppress bucket
+                          bucket *cbp)     // child, if new bucket is child
 {
   bucket *cobp;
   child_comb c;
   bucket *nobp;
-  int nearMatch;
+  int adjustment=0;
 
   if ((cobp = getFirstChildComb(&c, pbp, cbp, storedFilters, sfIndex)) 
                                                                 == NULL) {
     // not enough children, so done
-    return(sbp);
+    return(adjustment);
   }
   // In a real implementation, the sizes check would be made before
   // re-querying the buckets.  Here in this simulation, however,
   // getFirstChildComb() builds the composite bucket as well.
-  nearMatch = checkNearMatchAndTouchNonOverlap(cobp, pbp);
-  if (nearMatch == 1) {
-    // This is verified as a potential attack tuple.  Suppress
-    // non-overlap users.
-    if (cbp) {
-      // new bucket is child, so get non-overlap against parent
-      nobp = pbp;
-    }
-    else {
-      // new bucket is parent, so get non-overlap with child composite
-      nobp = cobp;
-    }
-    sbp = getNonOverlapAndSuppress(sbp, nobp);
+  if (cbp) {
+    // new bucket is child
+    adjustment += checkNearMatchAndTouchNonOverlap(cobp, pbp);
+  }
+  else {
+    // new bucket is parent
+    adjustment += checkNearMatchAndTouchNonOverlap(pbp, cobp);
   }
   // we keep checking even though we already found one child combination
   // there might be another....
@@ -278,20 +232,16 @@ checkAllChildCombinations(bucket *pbp,     // parent
     // admittedly ugly that I'm repeating this code.  I don't think I
     // built the getFirstChildComb / getNextChildComb interface very
     // smartly...
-    nearMatch = checkNearMatchAndTouchNonOverlap(cobp, pbp);
-    if (nearMatch == 1) {
-      if (cbp) {
-        // new bucket is child, so get non-overlap against parent
-        nobp = pbp;
-      }
-      else {
-        // new bucket is parent, so get non-overlap with child composite
-        nobp = cobp;
-      }
-      sbp = getNonOverlapAndSuppress(sbp, nobp);
+    if (cbp) {
+      // new bucket is child
+      adjustment += checkNearMatchAndTouchNonOverlap(cobp, pbp);
+    }
+    else {
+      // new bucket is parent
+      adjustment += checkNearMatchAndTouchNonOverlap(pbp, cobp);
     }
   }
-  return(sbp);
+  return(adjustment);
 }
 
 // the following threshold should catch most though not quite all near
@@ -313,15 +263,16 @@ checkAllChildCombinations(bucket *pbp,     // parent
  * returns a possibly-suppressed bucket
  * calling routine must free the returned bucket
  */
-bucket *
-putBucketDefend(bucket *bp) 
+int
+putBucketDefend(bucket *bp, attack_setup *as) 
 {
   int i, j, overlap;
   compare c;
   bucket *fbp;	// final bucket
   bucket *bp1;
-  bucket *allbp, *suppressbp, *temp;
-  int nearMatch, childAdded;
+  bucket *temp;
+  int childAdded;
+  int adjustment=0;
 
   countUsers(bp);
 
@@ -335,12 +286,6 @@ putBucketDefend(bucket *bp)
     exit(1);
   }
 
-  // It is probably wasteful to duplicate bp here, but 
-  // at all times, suppressbp will point to a bucket that is missing
-  // suppressed users (from the original bucket bp).  suppressbp may
-  // be generated several times, depending on the attack scenarios
-  // discovered.
-  suppressbp = dupBucket(bp);
   childAdded = 0;
   for (i = 0; i < j; i++) {
     numComparisons++;
@@ -354,47 +299,33 @@ putBucketDefend(bucket *bp)
       //     bucket (composed of combinations of children), and check for
       //     sizes are close etc.
       // first check for OtO attack
-      nearMatch = checkNearMatchAndTouchNonOverlap(bp, bp1);
-      if (nearMatch == 1) {
-        // indeed we have an attack situation!  Suppress any
-        // non-overlapping users that exceed the attack touch threshold
-        suppressbp = getNonOverlapAndSuppress(suppressbp, bp1);
-      }
-      // now deal with MtO attacks
-      // add child link
-      if (bp->bsize >= (bp1->bsize + LOW_COUNT_SOFT_THRESHOLD)) {
-        // new bucket bp is a parent of former bucket pb1
-        addChildLink(bp, i);
-        // don't do more until all possible children have been added
-        childAdded = 1;
-      }
-      else if (bp->bsize <= (bp1->bsize - LOW_COUNT_SOFT_THRESHOLD)) {
-        // former bucket bp1 is a parent of new bucket pb,
-        // check to see if this creates an attack tuple
-        suppressbp = checkAllChildCombinations(bp1, bp, suppressbp);
-        // When new bucket is child, add link after checking combinations
-        addChildLink(bp1, j);
+      adjustment += checkNearMatchAndTouchNonOverlap(bp, bp1);
+      if (as->defense > OtO_DEFENSE) {
+        // now deal with MtO attacks
+        // add child link
+        if (bp->bsize >= (bp1->bsize + LOW_COUNT_SOFT_THRESHOLD)) {
+          // new bucket bp is a parent of former bucket pb1
+          addChildLink(bp, i);
+          // don't do more until all possible children have been added
+          childAdded = 1;
+        }
+        else if (bp->bsize <= (bp1->bsize - LOW_COUNT_SOFT_THRESHOLD)) {
+          // former bucket bp1 is a parent of new bucket pb,
+          // check to see if this creates an attack tuple
+          adjustment += checkAllChildCombinations(bp1, bp);
+          // When new bucket is child, add link after checking combinations
+          addChildLink(bp1, j);
+        }
       }
     }
   }
-  if (childAdded) {
-    suppressbp = checkAllChildCombinations(bp, NULL, suppressbp);
+  if (as->defense > OtO_DEFENSE) {
+    if (childAdded) {
+      adjustment += checkAllChildCombinations(bp, NULL);
+    }
   }
-  // At this point, all users that should be suppressed because of the
-  // ATTACK threshold have been removed.  But not users that should be
-  // suppressed because of the higher ALL threshold.  So remove those
-  // users now.
-  allbp = makeBucket(suppressbp->bsize);
-  allbp->bsize = 0;
 
-  // allbp has allocated space for all of suppressbp, but no users:
-  // copy non suppressed users into allbp
-  addNonSuppressedUsers(allbp, suppressbp, HT_ALL);
-  numAllSuppressed += suppressbp->bsize - allbp->bsize;
-
-
-  freeBucket(suppressbp);
-  return(allbp);
+  return(adjustment);
 }
 
 int
@@ -402,6 +333,7 @@ putBucket(bucket *bp, attack_setup *as)
 {
   bucket *allbp;
   int noisyCount;
+  int adjustment=0;
 
   numPutBuckets++;
 
@@ -418,12 +350,10 @@ putBucket(bucket *bp, attack_setup *as)
     // putBucketDefend stores the bp in a data structure for future use.
     // Note that if we don't call putBucketDefend, we still don't bother
     // to free the bucket.  This is intentional and not a problem.
-    allbp = putBucketDefend(bp);
-    noisyCount = computeNoisyCount(allbp);
+    adjustment = putBucketDefend(bp, as);
+    numAdjust += adjustment;
   }
-  else {
-    noisyCount = computeNoisyCount(bp);
-  }
+  noisyCount = computeNoisyCount(bp) + adjustment;
 
   return(noisyCount);
 }
