@@ -202,7 +202,15 @@ makeOneFilter(bucket *bp, int i)
   lp = bp->list;
   for (j = 0; j < bp->bsize; j++) {
     if ((*lp & mask) == 0) {
-      setFilterBit(&(bp->filters[i]), (*lp & 0x3ff));
+      // The original code here was this:
+      //     setFilterBit(&(bp->filters[i]), (*lp & 0x3ff));
+      // But due to the fact that I was creating buckets based on the
+      // value of the last X bits of the user ID (which normally would
+      // not be available to the attacker), my filters were screwed up.
+      // So now I do this, though in a real implementation with random
+      // user IDs, this shouldn't be necessary:
+      setFilterBit(&(bp->filters[i]), (*lp ^ (*lp >> 5) ^ (*lp >> 9) ^ 
+                                      (*lp >> 13) ^ (*lp >> 23)) & 0x3ff);
     }
     lp++;
   }
