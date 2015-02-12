@@ -40,7 +40,7 @@ int maxSfIndex;
 #define MAX_TOUCH_COUNT 20
 int numTouches[MAX_TOUCH_COUNT];
 int numComparisons;
-int numPassDigest;
+int numPastDigest;
 int numCloseSize;
 int numSmallOverlap;
 int numPutBuckets;
@@ -66,7 +66,7 @@ initDefenseStats()
   numPutBuckets = 0;
   numLowCount = 0;
   numComparisons = 0;
-  numPassDigest = 0;
+  numPastDigest = 0;
   numCloseSize = 0;
   numSmallOverlap = 0;
   numAdjust = 0;
@@ -76,7 +76,7 @@ computeDefenseStats(int numRounds, attack_setup *as)
 {
   int i;
 
-  if (as->defense == OtO_DEFENSE) {
+  if (as->defense >= OtO_DEFENSE) {
     printf("Num Touches Histogram:\n");
     for (i = 0; i < MAX_TOUCH_COUNT; i++) {
       if (numTouches[i] != 0) {
@@ -88,12 +88,12 @@ computeDefenseStats(int numRounds, attack_setup *as)
            (float)((float)numPutBuckets/(float)numRounds), 
            (float)((float)numLowCount/(float)numRounds), 
            (float)((float)numComparisons/(float)numRounds));
-    printf("%.2f (%d%%) near matches\n", 
-           (float)((float)numPassDigest/(float)numRounds), 
-            (int)((float)(numPassDigest*100)/(float) numComparisons));
+    printf("%.2f (%d%%) past digest\n", 
+           (float)((float)numPastDigest/(float)numRounds), 
+            (int)((float)(numPastDigest*100)/(float) numComparisons));
     printf("%.2f (%d%%) close sizes\n", 
            (float)((float)numCloseSize/(float)numRounds), 
-            (int)((float)(numCloseSize*100)/(float) numPassDigest));
+            (int)((float)(numCloseSize*100)/(float) numPastDigest));
     printf("%.2f (%d%%) small overlaps\n", 
            (float)((float)numSmallOverlap/(float)numRounds), 
             (int)((float)(numSmallOverlap*100)/(float) numCloseSize));
@@ -293,7 +293,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
     overlap = (int) ((float) c.overlap * (float) 1.5625);
     if (overlap > NEAR_MATCH_THRESHOLD) {
       // filters suggest that there is a lot of overlap
-      numPassDigest++;
+      numPastDigest++;
       // for every new MtO and OtO combination, create a "composite"
       //     bucket (composed of combinations of children), and check for
       //     sizes are close etc.

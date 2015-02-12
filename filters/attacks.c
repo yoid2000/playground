@@ -106,7 +106,7 @@ computeAttackStats(int numSamples, attack_setup *as) {
 
   getStatsInt(&accS, accuracy, accIndex);
   getStatsFloat(&diffS, diffAttackDiffs, attackRoundNum);
-  printf("\n%d samples, confidence %d%%, error: av %.2f, sd = %.2f, min = %.2f, max = %.2f\n",
+  printf("\n%d samples, right %d%%, error: av %.2f, sd = %.2f, min = %.2f, max = %.2f\n",
          numSamples,
          (int)(((float) rightGuesses / (float) NUM_ROUNDS) * 100.0),
          accS.av, accS.sd, accS.min, accS.max);
@@ -260,6 +260,9 @@ oneOtOattack(int numSamples, bucket *userList, attack_setup *as)
     if (as->attribute == VICTIM_ATTRIBUTE_YES) {
       bp2 = combineBuckets(bp1, vbp);
     }
+    else if (as->attribute == VICTIM_ATTRIBUTE_NO) {
+      bp2 = dupBucket(bp1);
+    }
     // bp1 and bp2 are identical, except bp2 has victim
     if (as->order == VICTIM_FIRST) {
       // make bp1 hold the victim
@@ -280,6 +283,63 @@ oneOtOattack(int numSamples, bucket *userList, attack_setup *as)
   return(av2 - av1);
 }
 
+makeDecision(float answer, attack_setup *as)
+{
+  switch(as->attack) {
+    case OtO_ATTACK:
+      switch(as->attribute) {
+        case VICTIM_ATTRIBUTE_YES:
+          switch(as->order) {
+            case VICTIM_LAST:
+              if (answer >= 0.5) { rightGuesses++; }
+              else { wrongGuesses++; }
+              break;
+            case VICTIM_FIRST:
+              if (answer <= -0.5) { rightGuesses++; }
+              else { wrongGuesses++; }
+              break;
+            default:
+              printf("makeDecision() should not get here 4\n"); exit(1);
+          }
+          break;
+        case VICTIM_ATTRIBUTE_NO:
+          if ((answer < 0.5) && (answer > -0.5)) { rightGuesses++; }
+          else { wrongGuesses++; }
+          break;
+        default:
+          printf("makeDecision() should not get here 2\n"); exit(1);
+      }
+      break;
+    case MtO_ATTACK:
+      switch(as->attribute) {
+        case VICTIM_ATTRIBUTE_YES:
+          switch(as->location) {
+            case VICTIM_IN_PARENT:
+              if (answer <= 0.5) { rightGuesses++; }
+              else { wrongGuesses++; }
+              break;
+            case VICTIM_IN_ALL_CHILDREN:
+            case VICTIM_IN_ONE_CHILD:
+              if (answer >= -0.5) { rightGuesses++; }
+              else { wrongGuesses++; }
+              break;
+            default:
+              printf("makeDecision() should not get here 6\n"); exit(1);
+          }
+          break;
+        case VICTIM_ATTRIBUTE_NO:
+          if ((answer < 0.5) && (answer > -0.5)) { rightGuesses++; }
+          else { wrongGuesses++; }
+          break;
+        default:
+          printf("makeDecision() should not get here 3\n"); exit(1);
+      }
+      break;
+    default:
+      printf("makeDecision() should not get here 1\n"); exit(1);
+  }
+}
+
 runAttack(bucket *userList, attack_setup *as)
 {
   int confidence;   // between 0 and 100 percent
@@ -296,25 +356,11 @@ runAttack(bucket *userList, attack_setup *as)
       initDefense(10000);
       if (as->attack == OtO_ATTACK) {
         answer = oneOtOattack(numSamples, userList, as);
-        if (as->order == VICTIM_LAST) {
-          if (answer >= 0.5) { rightGuesses++; }
-          else { wrongGuesses++; }
-        }
-        else if (as->order == VICTIM_FIRST) {
-          if (answer <= -0.5) { rightGuesses++; }
-          else { wrongGuesses++; }
-        }
+        makeDecision(answer, as);
       }
       else if (as->attack == MtO_ATTACK) {
         answer = oneMtOattack(numSamples, userList, as);
-        if (as->location == VICTIM_IN_PARENT) {
-          if (answer <= 0.5) { rightGuesses++; }
-          else { wrongGuesses++; }
-        }
-        else { if (answer >= -0.5) { rightGuesses++;
-          }
-          else { wrongGuesses++; }
-        }
+        makeDecision(answer, as);
       }
       endDefense();
       if (attackRoundNum == NUM_ROUNDS) {
@@ -402,22 +448,22 @@ main()
   // Make complete list of users used for all attacks
   userList = createHighTouchTable(USER_LIST_SIZE);
 
-  as.attack = MtO_ATTACK;
-  //as.attack = OtO_ATTACK;
+  //as.attack = MtO_ATTACK;
+  as.attack = OtO_ATTACK;
 
-  as.defense = BASIC_DEFENSE;
+  //as.defense = BASIC_DEFENSE;
   //as.defense = OtO_DEFENSE;
-  //as.defense = MtO_DEFENSE;
+  as.defense = MtO_DEFENSE;
 
-  as.order = VICTIM_LAST;
-  //as.order = VICTIM_FIRST;
+  //as.order = VICTIM_LAST;
+  as.order = VICTIM_FIRST;
 
-  //as.location = VICTIM_IN_PARENT;
+  as.location = VICTIM_IN_PARENT;
   //as.location = VICTIM_IN_ALL_CHILDREN;
-  as.location = VICTIM_IN_ONE_CHILD;
+  //as.location = VICTIM_IN_ONE_CHILD;
 
-  as.attribute = VICTIM_ATTRIBUTE_YES;
-  //as.attribute = VICTIM_ATTRIBUTE_NO;
+  //as.attribute = VICTIM_ATTRIBUTE_YES;
+  as.attribute = VICTIM_ATTRIBUTE_NO;
 
   as.subAttack = SEGREGATED_CHILDREN;
 
@@ -425,11 +471,19 @@ main()
 
   as.chaffMin = 0;
   as.chaffMax = 0;
-  printf("Attack: %s, %s, %s, %s, %s\n", as.attack_str[as.attack],
+  if (as.attack == MtO_ATTACK) {
+    printf("Attack: %s, %s, %s, %s, %s\n", as.attack_str[as.attack],
                                      as.defense_str[as.defense], 
                                      as.order_str[as.order],
                                      as.location_str[as.location],
                                      as.attribute_str[as.attribute]);
+  }
+  else {
+    printf("Attack: %s, %s, %s, %s\n", as.attack_str[as.attack],
+                                     as.defense_str[as.defense], 
+                                     as.order_str[as.order],
+                                     as.attribute_str[as.attribute]);
+  }
   //test_getSegregateMask(userList); exit(1);
   runAttack(userList, &as);
 }
