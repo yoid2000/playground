@@ -11,7 +11,7 @@
 extern bucket *makeBucket(int arg1);
 extern bucket *dupBucket(bucket *arg1);
 extern float getNormal(float arg1, float arg2);
-extern float getFixedNormal(unsigned int arg1, float arg2, float arg3);
+extern float getFixedNormal(bucket *arg1, float arg2, float arg3);
 extern bucket *getNonOverlap(bucket *arg1, bucket *arg2,
                              bucket **arg3, 
                              bucket **arg4, 
@@ -46,6 +46,7 @@ int numSmallOverlap;
 int numPutBuckets;
 int numLowCount;
 int numAdjust;
+int numOtMdetect;
 
 initDefense(int maxBuckets) {
   storedFilters = (bucket **) calloc(maxBuckets, sizeof(bucket *));
@@ -111,7 +112,8 @@ freeStoredFilters()
   sfIndex = 0;
 }
 
-endDefense() {
+endDefense() 
+{
   countNumTouches(numTouches, MAX_TOUCH_COUNT);
   freeStoredFilters();
   free(storedFilters);
@@ -124,11 +126,8 @@ computeNoisyCount(bucket *bp)
   float noise;
   unsigned int fix=0;
 
-  for (i = 0; i < bp->bsize; i++) {
-    fix ^= bp->list[i];
-  }
   noise = getNormal(0.0, 2.0);	// random noise, SD=2
-  noise += getFixedNormal(fix, 0.0, 1.5);  // fixed noise, SD=1.5
+  noise += getFixedNormal(bp, 0.0, 1.5);  // fixed noise, SD=1.5
   // note: no rounding to 5 here.  I figure that it doesn't defeat any
   // attack, and makes it harder to understand what attacks work...
   noise = roundf(noise);

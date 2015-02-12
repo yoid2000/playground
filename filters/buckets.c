@@ -21,9 +21,17 @@ makeBucket(int bsize)
   int i, j;
   bucket *bp;
 
-  bp = (bucket*) malloc(sizeof(bucket));
+  if ((bp = (bucket*) malloc(sizeof(bucket))) == NULL) {
+    printf("makeBucket() malloc failed\n");  exit(1);
+  }
   bp->sorted = 0;
-  bp->list = (unsigned int *) calloc(bsize, sizeof(unsigned int));
+  if (bsize == 0) {
+    // not sure I can calloc something of 0 size, so I put something...
+    bp->list = (unsigned int *) calloc(1, sizeof(unsigned int));
+  }
+  else {
+    bp->list = (unsigned int *) calloc(bsize, sizeof(unsigned int));
+  }
   bp->bsize = bsize;
   initFilter(bp);
   bp->numChildren = 0;
@@ -130,8 +138,11 @@ sortBucketList(bucket *bp)
  *  important because more users may be added to the overlap buckets
  *  by the calling routine.  Note that the two overlapping buckets are
  *  identical (in membership, though not in allocated memory).  This is
- *  maybe a bit of unecessary extra work, but it makes things cleaner 
+ *  maybe a bit of unnecessary extra work, but it makes things cleaner 
  *  on the calling side.
+ *
+ *  The input buckets must be sorted.
+ *
  *  The calling routine must free the four new buckets.
  */
 bucket *
@@ -147,6 +158,12 @@ getNonOverlap(bucket *bp1, 	// submitted bucket 1 (sorted)
   unsigned int *nol1, *nol2, *ol1, *ol2;
   int compare;
 
+  if (bp1->sorted == 0) {
+    sortBucketList(bp1);
+  }
+  if (bp2->sorted == 0) {
+    sortBucketList(bp2);
+  }
   // We pessimistically make the worst-case sized buckets.
   nobp1 = makeBucket(bp1->bsize);
   obp1 = makeBucket(bp1->bsize);
@@ -240,6 +257,41 @@ makeRandomBucketFromList(int bsize, bucket *userList)
     *lp = userList->list[index];
     lp++;
   }
+  return(bp);
+}
+
+bucket *
+makeSegregatedBucketFromList(int mask, 
+                             int sampleShift,
+                             int max_bsize, 
+                             int sampleNum,
+                             int childNum,
+                             unsigned int victim,
+                             bucket *userList, 
+                             int userListSize)
+{
+  int value, i, bsize=0;
+  unsigned int *lp;
+  bucket *bp;
+
+  bp = makeBucket(max_bsize);
+  lp = bp->list;
+
+  for (i = 0; i < userListSize; i++) {
+    if (bsize >= max_bsize) {
+      printf("makeSegregatedBucketFromList ERROR (%d, %d)\n", 
+                                                           bsize, max_bsize);
+      exit(1);
+    }
+    value = (sampleNum << sampleShift) | childNum;
+    if ((userList->list[i] != victim) && 
+        ((userList->list[i] & mask) == value)) {
+      *lp = userList->list[i];
+      lp++;
+      bsize++;
+    }
+  }
+  bp->bsize = bsize;
   return(bp);
 }
 

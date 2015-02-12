@@ -60,9 +60,15 @@ createHighTouchTable(int size)
 
   // make the high_touch entries table
   max_ht_table = size;
-  ht_table = (high_touch *) calloc(size, sizeof(high_touch));
-  entry_table = (ENTRY *) calloc(size, sizeof(ENTRY));
-  keys_table = (hash_key *) calloc(size, sizeof(hash_key));
+  if ((ht_table = (high_touch *) calloc(size, sizeof(high_touch))) == NULL) {
+    printf("createHighTouchTable() calloc ht_table failed\n"); exit(1);
+  }
+  if ((entry_table = (ENTRY *) calloc(size, sizeof(ENTRY))) == NULL) {
+    printf("createHighTouchTable() calloc entry_table failed\n"); exit(1);
+  }
+  if ((keys_table = (hash_key *) calloc(size, sizeof(hash_key))) == NULL) {
+    printf("createHighTouchTable() calloc keys_table failed\n"); exit(1);
+  }
   initHighTouchTable();
   // generate a user id per table entry
   bp = makeRandomBucket(size);
