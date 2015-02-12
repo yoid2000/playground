@@ -81,16 +81,20 @@ exceedsNoisyThreshold(float hardThresh, float value, float sd)
   float noise;
 
   noise = getNormal(0.0, sd);
-//printf("%.2f\n", noise);
   if ((value + noise) > hardThresh) { return(1); }
   else { return(0); }
 }
 
 
 float
-getFixedNormal(uint64_t fix, float mean, float sd) {
+getFixedNormal(bucket *bp, float mean, float sd) {
   float ran;
+  unsigned int fix, i;
 
+  for (i = 0; i < bp->bsize; i++) {
+    fix += bp->list[i];
+  }
+  fix = (fix & 0x1fff) ^ ((fix>>5) & 0x1fff) ^ ((fix>>11) & 0x1fff);
   fix &= 0x1fff;
   ran = normalDist[fix];
   ran *= sd;
