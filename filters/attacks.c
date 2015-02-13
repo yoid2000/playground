@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "./filters.h"
 #include "./utilities.h"
 #include "./defense.h"
@@ -24,10 +25,7 @@ extern bucket *makeSegregatedBucketFromList(int mask,
 
 #define USER_LIST_SIZE 0x100000  
 
-// number of attack rounds: needed to be confident in my confidence level
-#define NUM_ROUNDS 40	
-
-float diffAttackDiffs[NUM_ROUNDS];
+float *diffAttackDiffs;
 int attackRoundNum;
 int rightGuesses;
 int wrongGuesses;
@@ -88,14 +86,14 @@ initAttackStats(int numSamples, attack_setup *as)
   int i;
 
   attackRoundNum = 0;
-  for (i = 0; i < NUM_ROUNDS; i++) {
+  for (i = 0; i < as->numRounds; i++) {
     diffAttackDiffs[i] = 0;
   }
   if (as->numChildren == 0) {
-    accSize = numSamples * NUM_ROUNDS * 2;
+    accSize = numSamples * as->numRounds * 2;
   }
   else {
-    accSize = numSamples * NUM_ROUNDS * (as->numChildren + 1);
+    accSize = numSamples * as->numRounds * (as->numChildren + 1);
   }
   accuracy = (int *) calloc(accSize, sizeof (int *));
   accIndex = 0;
@@ -106,11 +104,11 @@ computeAttackStats(int numSamples, attack_setup *as) {
 
   getStatsInt(&accS, accuracy, accIndex);
   getStatsFloat(&diffS, diffAttackDiffs, attackRoundNum);
-  printf("\n%d samples, right %d%%, error: av %.2f, sd = %.2f, min = %.2f, max = %.2f\n",
+  fprintf(as->f, "\n%d samples, right %d%%, error: av %.2f, sd = %.2f, min = %.2f, max = %.2f\n",
          numSamples,
-         (int)(((float) rightGuesses / (float) NUM_ROUNDS) * 100.0),
+         (int)(((float) rightGuesses / (float) as->numRounds) * 100.0),
          accS.av, accS.sd, accS.min, accS.max);
-  printf("            answers: av %.2f, sd = %.2f, min = %.2f, max = %.2f\n",
+  fprintf(as->f, "            answers: av %.2f, sd = %.2f, min = %.2f, max = %.2f\n",
          diffS.av, diffS.sd, diffS.min, diffS.max);
   
   free(accuracy);
@@ -346,32 +344,30 @@ runAttack(bucket *userList, attack_setup *as)
   int i, numSamples;
   float answer;
   
-  for (numSamples = 5; numSamples < 81; numSamples *= 2) {
-    initDefenseStats();
-    initAttackStats(numSamples, as);
-    rightGuesses = 0;
-    notSure = 0;
-    wrongGuesses = 0;
-    for (i = 0; i < NUM_ROUNDS; i++) {
-      initDefense(10000);
-      if (as->attack == OtO_ATTACK) {
-        answer = oneOtOattack(numSamples, userList, as);
-        makeDecision(answer, as);
-      }
-      else if (as->attack == MtO_ATTACK) {
-        answer = oneMtOattack(numSamples, userList, as);
-        makeDecision(answer, as);
-      }
-      endDefense();
-      if (attackRoundNum == NUM_ROUNDS) {
-        printf("runAttack(): bad attackRoundNum %d\n", attackRoundNum);
-        exit(1);
-      }
-      diffAttackDiffs[attackRoundNum++] = answer;
+  initDefenseStats();
+  initAttackStats(as->numSamples, as);
+  rightGuesses = 0;
+  notSure = 0;
+  wrongGuesses = 0;
+  for (i = 0; i < as->numRounds; i++) {
+    initDefense(10000);
+    if (as->attack == OtO_ATTACK) {
+      answer = oneOtOattack(as->numSamples, userList, as);
+      makeDecision(answer, as);
     }
-    computeAttackStats(numSamples, as);
-    computeDefenseStats(NUM_ROUNDS, as);
+    else if (as->attack == MtO_ATTACK) {
+      answer = oneMtOattack(as->numSamples, userList, as);
+      makeDecision(answer, as);
+    }
+    endDefense();
+    if (attackRoundNum == as->numRounds) {
+      printf("runAttack(): bad attackRoundNum %d\n", attackRoundNum);
+      exit(1);
+    }
+    diffAttackDiffs[attackRoundNum++] = answer;
   }
+  computeAttackStats(as->numSamples, as);
+  computeDefenseStats(as->numRounds, as);
 }
 
 do_getSegregateMask(bucket *userList, int numSamples, int numChildren)
@@ -421,10 +417,47 @@ test_getSegregateMask(bucket *userList)
   do_getSegregateMask(userList, numSamples, numChildren);
 }
 
-main()
+printCommandLines(attack_setup *as)
+{
+  int i;
+
+  printf("Usage: ./runAttacks -a attack -d defense -o victim_order -l victim_location -t victim_attribute -c num_children -m min_chaff -x max_chaff -r num_rounds -s num_samples, -e seed <directory>\n ");
+  printf("     attack values:\n");
+  for (i = 0; i < NUM_ATTACKS; i++) {
+    printf("          %d = %s\n", i, as->attack_str[i]);
+  }
+  printf("     defense values:\n");
+  for (i = 0; i < NUM_DEFENSES; i++) {
+    printf("          %d = %s\n", i, as->defense_str[i]);
+  }
+  printf("     victim_order values:\n");
+  for (i = 0; i < NUM_ORDERS; i++) {
+    printf("          %d = %s\n", i, as->order_str[i]);
+  }
+  printf("     victim_location values:\n");
+  for (i = 0; i < NUM_VICTIM_LOC; i++) {
+    printf("          %d = %s\n", i, as->location_str[i]);
+  }
+  printf("     victim_attribute values:\n");
+  for (i = 0; i < NUM_ATTRIBUTES; i++) {
+    printf("          %d = %s\n", i, as->attribute_str[i]);
+  }
+  printf("     num_children between 2 and 20\n");
+  printf("     min_chaff and max_chaff >= 0\n");
+  printf("     num_rounds (for experiment statistical significance) > 0\n");
+  printf("     num_samples (for attack statistical significance) > 0\n");
+  printf("     seed:  any integer\n");
+}
+
+main(int argc, char *argv[])
 {
   bucket *userList;
   attack_setup as;
+  int c, seed;
+  unsigned char path[378], dir[128], filename[256], temp[32];
+
+  filename[0] = '\0';
+
   as.defense_str[BASIC_DEFENSE] = "basic defense";
   as.defense_str[OtO_DEFENSE] = "OtO defense"; 
   as.defense_str[MtO_DEFENSE] = "MtO defense"; 
@@ -443,43 +476,96 @@ main()
   as.location_str[VICTIM_IN_ONE_CHILD] = "victim in one child";
   as.location_str[VICTIM_IN_ALL_CHILDREN] = "victim in all children";
 
-  srand48((long int) 2);
+  // set defaults
+  as.attack = MtO_ATTACK;
+  as.defense = MtO_DEFENSE;
+  as.order = VICTIM_LAST;
+  as.location = VICTIM_IN_PARENT;
+  as.attribute = VICTIM_ATTRIBUTE_YES;
+  as.subAttack = SEGREGATED_CHILDREN;
+  as.numChildren = 2;
+  as.chaffMin = 0;
+  as.chaffMax = 0;
+  as.numRounds = 20;
+  as.numSamples = 10;
+  seed = 2;
+
+  while ((c = getopt (argc, argv, "a:d:o:l:t:c:m:x:r:s:e:h?")) != -1) {
+    sprintf(temp, "%c%s", c, optarg);
+    strcat(filename, temp);
+    switch (c) {
+      case 'a':
+        as.attack = atoi(optarg);
+        break;
+      case 'd':
+        as.defense = atoi(optarg);
+        break;
+      case 'o':
+        as.order = atoi(optarg);
+        break;
+      case 'l':
+        as.location = atoi(optarg);
+        break;
+      case 't':
+        as.attribute = atoi(optarg);
+        break;
+      case 'c':
+        as.numChildren = atoi(optarg);
+        break;
+      case 'm':
+        as.chaffMin = atoi(optarg);
+        break;
+      case 'x':
+        as.chaffMax = atoi(optarg);
+        break;
+      case 'r':
+        as.numRounds = atoi(optarg);
+        break;
+      case 's':
+        as.numSamples = atoi(optarg);
+        break;
+      case 'e':
+        seed = atoi(optarg);
+        break;
+      case '?':
+      case 'h':
+        printCommandLines(&as);
+        exit(1);
+      default:
+        printCommandLines(&as);
+        exit(1);
+    }
+  }
+  strcat(filename, ".txt");
+
+  if (optind == argc) {
+    strcpy(dir, "./");
+  }
+  else {
+    strcpy(dir, argv[optind]);
+  }
+
+  sprintf(path, "%s%s", dir, filename);
+  if ((as.f = fopen(path, "w")) == NULL) {
+    printf("Couldn't open file %s\n", path);
+    exit(1);
+  }
+
+  srand48((long int) seed);
 
   // Make complete list of users used for all attacks
   userList = createHighTouchTable(USER_LIST_SIZE);
+  diffAttackDiffs = (float *) calloc(as.numRounds, sizeof(float *));
 
-  //as.attack = MtO_ATTACK;
-  as.attack = OtO_ATTACK;
-
-  //as.defense = BASIC_DEFENSE;
-  //as.defense = OtO_DEFENSE;
-  as.defense = MtO_DEFENSE;
-
-  //as.order = VICTIM_LAST;
-  as.order = VICTIM_FIRST;
-
-  as.location = VICTIM_IN_PARENT;
-  //as.location = VICTIM_IN_ALL_CHILDREN;
-  //as.location = VICTIM_IN_ONE_CHILD;
-
-  //as.attribute = VICTIM_ATTRIBUTE_YES;
-  as.attribute = VICTIM_ATTRIBUTE_NO;
-
-  as.subAttack = SEGREGATED_CHILDREN;
-
-  as.numChildren = 2;
-
-  as.chaffMin = 0;
-  as.chaffMax = 0;
   if (as.attack == MtO_ATTACK) {
-    printf("Attack: %s, %s, %s, %s, %s\n", as.attack_str[as.attack],
+    fprintf(as.f, "Attack: %s, %s, %s, %s, %s\n", as.attack_str[as.attack],
                                      as.defense_str[as.defense], 
                                      as.order_str[as.order],
                                      as.location_str[as.location],
                                      as.attribute_str[as.attribute]);
   }
   else {
-    printf("Attack: %s, %s, %s, %s\n", as.attack_str[as.attack],
+    fprintf(as.f, "Attack: %s, %s, %s, %s\n", as.attack_str[as.attack],
                                      as.defense_str[as.defense], 
                                      as.order_str[as.order],
                                      as.attribute_str[as.attribute]);
