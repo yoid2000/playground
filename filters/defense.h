@@ -53,4 +53,8 @@ typedef struct attack_setup_t {
   int numChildren;   // for OtM attack
   int chaffMax;
   int chaffMin;
+  int numRounds;  // number of attack repeats 
+                  // (needed for statistical significance)
+  int numSamples;
+  FILE *f;
 } attack_setup;

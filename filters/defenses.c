@@ -77,27 +77,27 @@ computeDefenseStats(int numRounds, attack_setup *as)
   int i;
 
   if (as->defense >= OtO_DEFENSE) {
-    printf("Num Touches Histogram:\n");
+    fprintf(as->f, "Num Touches Histogram:\n");
     for (i = 0; i < MAX_TOUCH_COUNT; i++) {
       if (numTouches[i] != 0) {
-        printf("    %d: %.2f\n", i, 
+        fprintf(as->f, "    %d: %.2f\n", i, 
                (float)((float)numTouches[i]/(float)numRounds));
       }
     }
-    printf("%.2f buckets (%.2f low count), %.2f bucket pairs\n", 
+    fprintf(as->f, "%.2f buckets (%.2f low count), %.2f bucket pairs\n", 
            (float)((float)numPutBuckets/(float)numRounds), 
            (float)((float)numLowCount/(float)numRounds), 
            (float)((float)numComparisons/(float)numRounds));
-    printf("%.2f (%d%%) past digest\n", 
+    fprintf(as->f, "%.2f (%d%%) past digest\n", 
            (float)((float)numPastDigest/(float)numRounds), 
             (int)((float)(numPastDigest*100)/(float) numComparisons));
-    printf("%.2f (%d%%) close sizes\n", 
+    fprintf(as->f, "%.2f (%d%%) close sizes\n", 
            (float)((float)numCloseSize/(float)numRounds), 
             (int)((float)(numCloseSize*100)/(float) numPastDigest));
-    printf("%.2f (%d%%) small overlaps\n", 
+    fprintf(as->f, "%.2f (%d%%) small overlaps\n", 
            (float)((float)numSmallOverlap/(float)numRounds), 
             (int)((float)(numSmallOverlap*100)/(float) numCloseSize));
-    printf("Average %.2f adjusted users per checked bucket\n",
+    fprintf(as->f, "Average %.2f adjusted users per checked bucket\n",
             (float)((float)numAdjust/(float) numSmallOverlap));
   }
 }
