@@ -30,7 +30,7 @@ typedef struct one_filter_t {
 } one_filter;
 
 #define FILTERS_PER_BUCKET 3         // Must be 3!!!
-#define MAX_CHILDREN 16
+#define MAX_CHILDREN 20
 /*
  * In a real system, the filters and bucket would not be in the same
  * structure.  Rather, the bucket would be deleted after use, and

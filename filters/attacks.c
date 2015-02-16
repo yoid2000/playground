@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <time.h>
 #include "./filters.h"
 #include "./utilities.h"
 #include "./defense.h"
@@ -453,7 +454,7 @@ main(int argc, char *argv[])
 {
   bucket *userList;
   attack_setup as;
-  int c, seed;
+  int c, seed=0;
   unsigned char path[378], dir[128], filename[256], temp[32];
 
   filename[0] = '\0';
@@ -488,7 +489,6 @@ main(int argc, char *argv[])
   as.chaffMax = 0;
   as.numRounds = 20;
   as.numSamples = 10;
-  seed = 2;
 
   while ((c = getopt (argc, argv, "a:d:o:l:t:c:m:x:r:s:e:h?")) != -1) {
     sprintf(temp, "%c%s", c, optarg);
@@ -536,6 +536,14 @@ main(int argc, char *argv[])
         exit(1);
     }
   }
+  if (seed == 0) {
+    seed = time(NULL);
+  }
+  printf("seed = %d\n", seed);
+  srand48((long int) seed);
+
+  sprintf(temp, ".%d", getRandInteger(1000, 9999));
+  strcat(filename, temp);
   strcat(filename, ".txt");
 
   if (optind == argc) {
@@ -551,7 +559,6 @@ main(int argc, char *argv[])
     exit(1);
   }
 
-  srand48((long int) seed);
 
   // Make complete list of users used for all attacks
   userList = createHighTouchTable(USER_LIST_SIZE);
