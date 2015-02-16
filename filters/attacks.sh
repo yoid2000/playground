@@ -3,8 +3,20 @@
 DIR=$(pwd)
 OUTDIR="/home/francis/attacks/"
 
-./runAttacks -a 1 -d 3 -o 0 -l 0 -t 0 -c 2 -m 0 -x 0 -r 40 -s 10 -e 1 $OUTDIR
-./runAttacks -a 1 -d 3 -o 0 -l 0 -t 1 -c 2 -m 0 -x 0 -r 40 -s 10 -e 1 $OUTDIR
+./runAttacks -a 1 -d 3 -o 0 -l 0 -c 10 -m 0 -x 0 -r 500 -s 10 -t 0 $OUTDIR
+exit
+
+for s in 5 10 20 40
+do
+  for t in 0 1
+  do
+#./runAttacks -a 0 -d 3 -o 0 -l 0 -c 2 -m 0 -x 0 -r 500 -s $s -t $t $OUTDIR
+    for c in 10 20
+    do
+./runAttacks -a 1 -d 3 -o 0 -l 0 -c $c -m 0 -x 0 -r 500 -s $s -t $t $OUTDIR
+    done
+  done
+done
 
 #
 #Usage: ./runAttacks -a attack -d defense -o victim_order -l victim_location -t victim_attribute -c num_children -m min_chaff -x max_chaff -r num_rounds -s num_samples, -e seed
