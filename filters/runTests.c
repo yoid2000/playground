@@ -25,6 +25,7 @@ main()
   // test_createHighTouchTable();
   // test_highTouch();
   // test_getMaxComb();
-  test_childCombIterator();
+  // test_childCombIterator();
   // runCompareFullFiltersSpeedTests();
+  test_getNonOverlap3();
 }
