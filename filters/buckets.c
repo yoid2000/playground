@@ -138,8 +138,8 @@ sortBucketList(bucket *bp)
  *  important because more users may be added to the overlap buckets
  *  by the calling routine.  Note that the two overlapping buckets are
  *  identical (in membership, though not in allocated memory).  This is
- *  maybe a bit of unnecessary extra work, but it makes things cleaner 
- *  on the calling side.
+ *  maybe a bit of unnecessary extra work, is there for historical 
+ *  reasons, and should probably be fixed.
  *
  *  The input buckets must be sorted.
  *
@@ -240,6 +240,141 @@ getNonOverlap(bucket *bp1, 	// submitted bucket 1 (sorted)
   *r_obp2 = obp2;
 }
 
+bucket *
+getNonOverlap3(bucket *mbp, 	// submitted "middle" (new) bucket (sorted)
+      bucket *lbp,      // submitted "left" bucket (sorted)
+      bucket *rbp,      // submitted "right" bucket (sorted)
+      bucket **r_l_obp,   // exclusive overlap of left and middle buckets
+      bucket **r_r_obp,   // exclusive overlap of right and middle buckets
+      bucket **r_ml_nobp,   // non-overlap of middle wrt left
+      bucket **r_mr_nobp)   // non-overlap of middle wrt right
+{
+  unsigned int *ml, *ll, *rl, *ml_last, *ll_last, *rl_last;
+  bucket *l_obp, *r_obp, *ml_nobp, *mr_nobp;
+  unsigned int *l_ol, *r_ol, *ml_nol, *mr_nol;
+  int compare_ml, compare_mr, max_size;
+  unsigned int rtemp = 0, ltemp = 0;
+
+  if (mbp->sorted == 0) {
+    sortBucketList(mbp);
+  }
+  if (lbp->sorted == 0) {
+    sortBucketList(lbp);
+  }
+  if (rbp->sorted == 0) {
+    sortBucketList(rbp);
+  }
+  // We pessimistically allocate for the worst-case sized buckets.
+  max_size = getMax(mbp->bsize, lbp->bsize, rbp->bsize);
+  l_obp = makeBucket(max_size);
+  r_obp = makeBucket(max_size);
+  ml_nobp = makeBucket(max_size);
+  mr_nobp = makeBucket(max_size);
+  // set up all my list pointers
+  ml = mbp->list;
+  ml_last = &(mbp->list[mbp->bsize]);
+  rl = rbp->list;
+  rl_last = &(rbp->list[rbp->bsize]);
+  ll = lbp->list;
+  ll_last = &(lbp->list[lbp->bsize]);
+  l_ol = l_obp->list;
+  r_ol = r_obp->list;
+  ml_nol = ml_nobp->list;
+  mr_nol = mr_nobp->list;
+  // and initialize the overlap and non-overlap bucket sizes
+  l_obp->bsize = 0;
+  r_obp->bsize = 0;
+  ml_nobp->bsize = 0;
+  mr_nobp->bsize = 0;
+
+  while(1) {
+//printf("%p:%d, %p:%d, %p:%d\n", ml, *ml, rl, *rl, ll, *ll);
+    if (ml == ml_last) {
+      break;
+    }
+    if (rl == rl_last) {
+      // replace the last (biggest) right bucket user with the
+      // biggest possible user.  This way, rl is never incremented
+      // again, and we don't have to worry about it any more
+      rl--;
+      if (rtemp != 0) {
+        printf("getNonOverlap3() something wrong with rtemp\n");
+        exit(1);
+      }
+      rtemp = *rl;
+      *rl = 0x7fffffff;
+    }
+    if (ll == ll_last) {
+      // same for left bucket
+      ll--;
+      if (ltemp != 0) {
+        printf("getNonOvellap3() something wrong with ltemp\n");
+        exit(1);
+      }
+      ltemp = *ll;
+      *ll = 0x7fffffff;
+    }
+    compare_ml = userCmpFunc((const void *)ml, (const void *)ll);
+    compare_mr = userCmpFunc((const void *)ml, (const void *)rl);
+    if ((compare_ml == 0) && (compare_mr == 0)) {
+      // ignore triple matches
+      ll++; ml++; rl++;
+    }
+    else if ((compare_ml < 0) && (compare_mr < 0)) {
+      // middle value is alone the min, needs to advance
+      *ml_nol = *ml; ml_nol++; ml_nobp->bsize++;
+      *mr_nol = *ml; mr_nol++; mr_nobp->bsize++;
+      ml++;
+    }
+    else if ((compare_ml < 0) && (compare_mr == 0)) {
+      // middle and right have overlap, and come before left
+      *ml_nol = *ml; ml_nol++; ml_nobp->bsize++;
+      *r_ol = *ml; r_ol++; r_obp->bsize++;
+      ml++; rl++;
+    }
+    else if ((compare_ml == 0) && (compare_mr < 0)) {
+      // middle and left have overlap, and come before right
+      *mr_nol = *ml; mr_nol++; mr_nobp->bsize++;
+      *l_ol = *ml; l_ol++; l_obp->bsize++;
+      ml++; ll++;
+    }
+    else if ((compare_ml < 0) && (compare_mr > 0)) {
+      // no overlap, the right value is  minimum
+      // don't care about non-overlap in the right, so advance right value
+      rl++;
+    }
+    else if ((compare_ml > 0) && (compare_mr < 0)) {
+      // no overlap, the left value is  minimum
+      // don't care about non-overlap in the left, so advance left value
+      ll++;
+    }
+    else if ((compare_ml > 0) && (compare_mr == 0)) {
+      // overlap is right, but left is minimum
+      // advance left, and pick up the overlap in a future iteration
+      ll++;
+    }
+    else if ((compare_ml == 0) && (compare_mr > 0)) {
+      // overlap is left, but right is minimum
+      // advance right, and pick up the overlap in a future iteration
+      rl++;
+    }
+    else if ((compare_ml > 0) && (compare_mr > 0)) {
+      // no overlap with middle, both left and right are at minimums
+      // we don't care about non-overlap between left/right and middle,
+      // so just advance left and right values
+      rl++; ll++;
+    }
+  }
+  // replace the over-written left and right max entries
+  if (rtemp) { *rl = rtemp; }
+  if (ltemp) { *ll = ltemp; }
+  // finally, set the return pointers
+  *r_l_obp = l_obp;
+  *r_r_obp = r_obp;
+  *r_ml_nobp = ml_nobp;
+  *r_mr_nobp = mr_nobp;
+}
+
 /* Ignore duplicate random index (on occasion, may be duplicate
  * user in a given bucket) */
 bucket *
@@ -309,6 +444,10 @@ makeRandomBucket(int bsize)
 
   for (i = 0; i < bsize; i++) {
     *lp = lrand48();
+    if (*lp == 0x7fffffff) {
+      // reserved value for getNonOverlap3()
+      *lp = 0x7ffffffe;
+    }
     lp++;
   }
   return(bp);
@@ -546,6 +685,153 @@ test_childCombIterator()
   }
 
   printf("test_childCombIterator passed (%d checks).\n", numCCChecks);
+}
+
+check_bsizes(int testNum, bucket *lobp, int lo, bucket *robp, int ro, bucket *lnobp, int lno, bucket *rnobp, int rno)
+{
+  if (lobp->bsize != lo) {
+    printf("check_bsizes() ERROR%d bad lobp->bsize %d, expect %d,%d,%d,%d\n", testNum, lobp->bsize, lo, ro, lno, rno); exit(1);
+  }
+  if (robp->bsize != ro) {
+    printf("check_bsizes() ERROR%d bad robp->bsize %d, expect %d,%d,%d,%d\n", testNum, robp->bsize, lo, ro, lno, rno); exit(1);
+  }
+  if (lnobp->bsize != lno) {
+    printf("check_bsizes() ERROR%d bad lnobp->bsize %d, expect %d,%d,%d,%d\n", testNum, lnobp->bsize, lo, ro, lno, rno); exit(1);
+  }
+  if (rnobp->bsize != rno) {
+    printf("check_bsizes() ERROR%d bad rnobp->bsize %d, expect %d,%d,%d,%d\n", testNum, rnobp->bsize, lo, ro, lno, rno); exit(1);
+  }
+}
+
+putUval(unsigned int uval, bucket *bp) {
+  int i, index;
+
+  index = getRandInteger(0, bp->bsize-2);
+  while(1) {
+    if (bp->list[index] == 0) {
+      bp->list[index] = uval;
+      break;
+    }
+    else {
+      if (++index >= bp->bsize) { index = 0; }
+    }
+  }
+}
+
+do_getNonOverlap3(int msize, int lsize, int rsize, int lolap, int rolap, int bolap) {
+  bucket *lbp, *rbp, *mbp;
+  bucket *lobp, *robp, *lnobp, *rnobp;
+  int i;
+  unsigned int uval;
+
+  if ((lolap + rolap + bolap) > msize) {
+    printf("do_getNonOverlap3() pick better values 1 %d, %d, %d, %d\n", 
+                   lolap, rolap, bolap, msize);  exit(1);
+  }
+  if ((lolap + bolap) > lsize) {
+    printf("do_getNonOverlap3() pick better values 2 %d, %d, %d\n", 
+                   lolap, bolap, lsize);  exit(1);
+  }
+  if ((rolap + bolap) > rsize) {
+    printf("do_getNonOverlap3() pick better values 3 %d, %d, %d\n", 
+                   rolap, bolap, rsize);  exit(1);
+  }
+
+  lbp = makeBucket(lsize);
+  rbp = makeBucket(rsize);
+  mbp = makeBucket(msize);
+
+  for (i = 0; i < lolap; i++) {
+    uval = lrand48();
+    putUval(uval, lbp);
+    putUval(uval, mbp);
+  }
+  for (i = 0; i < rolap; i++) {
+    uval = lrand48();
+    putUval(uval, rbp);
+    putUval(uval, mbp);
+  }
+  for (i = 0; i < bolap; i++) {
+    uval = lrand48();
+    putUval(uval, rbp);
+    putUval(uval, lbp);
+    putUval(uval, mbp);
+  }
+  for (i = 0; i < rbp->bsize; i++) {
+    if (rbp->list[i] == 0) { rbp->list[i] = lrand48(); }
+  }
+  for (i = 0; i < mbp->bsize; i++) {
+    if (mbp->list[i] == 0) { mbp->list[i] = lrand48(); }
+  }
+  for (i = 0; i < lbp->bsize; i++) {
+    if (lbp->list[i] == 0) { lbp->list[i] = lrand48(); }
+  }
+  getNonOverlap3(mbp, lbp, rbp, &lobp, &robp, &lnobp, &rnobp);
+  check_bsizes(10, lobp, lolap, robp, rolap, lnobp, (msize-lolap-bolap), rnobp, (msize-rolap-bolap));
+  freeBucket(lobp); freeBucket(robp); freeBucket(lnobp); freeBucket(rnobp);
+
+}
+
+test_getNonOverlap3() {
+  bucket *lbp, *rbp, *mbp;
+  bucket *lobp, *robp, *lnobp, *rnobp;
+  unsigned int *lp;
+  int i;
+
+  lbp = makeBucket(4);
+  rbp = makeBucket(4);
+  mbp = makeBucket(8);
+  lp = lbp->list; *lp++ = 15; *lp++ = 12; *lp++ = 18; *lp++ = 15;
+  lp = rbp->list; *lp++ = 25; *lp++ = 22; *lp++ = 28; *lp++ = 25;
+  lp = mbp->list; *lp++ = 35; *lp++ = 32; *lp++ = 38; *lp++ = 35;
+  *lp++ = 45; *lp++ = 42; *lp++ = 48; *lp++ = 45;
+  getNonOverlap3(mbp, lbp, rbp, &lobp, &robp, &lnobp, &rnobp);
+  check_bsizes(1, lobp, 0, robp, 0, lnobp, 8, rnobp, 8);
+  freeBucket(lobp); freeBucket(robp); freeBucket(lnobp); freeBucket(rnobp);
+
+  lp = lbp->list; *lp++ = 55; *lp++ = 52; *lp++ = 58; *lp++ = 55;
+  getNonOverlap3(mbp, lbp, rbp, &lobp, &robp, &lnobp, &rnobp);
+  check_bsizes(2, lobp, 0, robp, 0, lnobp, 8, rnobp, 8);
+  freeBucket(lobp); freeBucket(robp); freeBucket(lnobp); freeBucket(rnobp);
+
+  lp = rbp->list; *lp++ = 65; *lp++ = 62; *lp++ = 68; *lp++ = 65;
+  getNonOverlap3(mbp, lbp, rbp, &lobp, &robp, &lnobp, &rnobp);
+  check_bsizes(3, lobp, 0, robp, 0, lnobp, 8, rnobp, 8);
+  freeBucket(lobp); freeBucket(robp); freeBucket(lnobp); freeBucket(rnobp);
+
+  lp = rbp->list; *lp++ = 15; *lp++ = 22; *lp++ = 68; *lp++ = 65;
+  lp = lbp->list; *lp++ = 16; *lp++ = 20; *lp++ = 58; *lp++ = 55;
+  getNonOverlap3(mbp, lbp, rbp, &lobp, &robp, &lnobp, &rnobp);
+  check_bsizes(4, lobp, 0, robp, 0, lnobp, 8, rnobp, 8);
+  freeBucket(lobp); freeBucket(robp); freeBucket(lnobp); freeBucket(rnobp);
+
+  lp = rbp->list; *lp++ = 15; *lp++ = 22; *lp++ = 32; *lp++ = 65;
+  lp = lbp->list; *lp++ = 15; *lp++ = 20; *lp++ = 48; *lp++ = 65;
+  getNonOverlap3(mbp, lbp, rbp, &lobp, &robp, &lnobp, &rnobp);
+  check_bsizes(5, lobp, 1, robp, 1, lnobp, 7, rnobp, 7);
+  freeBucket(lobp); freeBucket(robp); freeBucket(lnobp); freeBucket(rnobp);
+
+  lp = rbp->list; *lp++ = 35; *lp++ = 22; *lp++ = 32; *lp++ = 65;
+  lp = lbp->list; *lp++ = 15; *lp++ = 20; *lp++ = 48; *lp++ = 35;
+  getNonOverlap3(mbp, lbp, rbp, &lobp, &robp, &lnobp, &rnobp);
+  check_bsizes(6, lobp, 1, robp, 1, lnobp, 7, rnobp, 7);
+  freeBucket(lobp); freeBucket(robp); freeBucket(lnobp); freeBucket(rnobp);
+
+  for (i = 0; i < 1000; i++) {
+    do_getNonOverlap3(getRandInteger(200,300),
+                      getRandInteger(100,200),
+                      getRandInteger(100,200),
+                      getRandInteger(0,20),
+                      getRandInteger(0,20),
+                      getRandInteger(0,20));
+  }
+
+  do_getNonOverlap3(200, 300, 90, 200, 0, 0);
+  do_getNonOverlap3(200, 300, 90, 0, 0, 90);
+  do_getNonOverlap3(200, 300, 300, 0, 0, 200);
+  do_getNonOverlap3(200, 300, 300, 50, 50, 100);
+
+  printf("test_getNonOverlap3() passed\n");
 }
 
 do_getNonOverlap(int bsize1, int bsize2, int overlap)

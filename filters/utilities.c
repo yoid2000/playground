@@ -5,6 +5,14 @@
 #include "./filters.h"
 #include "./normalDist.h"
 
+int
+getMax(int v1, int v2, int v3)
+{
+  if ((v1 >= v2) && (v1 >= v3)) {return(v1);}
+  if ((v2 >= v1) && (v2 >= v3)) {return(v2);}
+  if ((v3 >= v1) && (v3 >= v2)) {return(v3);}
+}
+
 long int fact( int x)
 {
   long int f=1;
