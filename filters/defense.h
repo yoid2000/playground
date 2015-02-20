@@ -37,6 +37,11 @@
 #define VICTIM_IN_ONE_CHILD 1
 #define VICTIM_IN_ALL_CHILDREN 2
 
+// For MtM, the type of attack (mtmType)
+#define NUM_MTM_TYPES 2
+#define ZIG_ZAG 0
+#define FULL_CLUSTER 1
+
 typedef struct attack_setup_t {
   int attack;
   char *attack_str[NUM_ATTACKS];
@@ -50,11 +55,42 @@ typedef struct attack_setup_t {
   char *location_str[NUM_VICTIM_LOC];
   int location;
   char *attribute_str[NUM_ATTRIBUTES];
+  int mtmType;
+  char *mtmType_str[NUM_MTM_TYPES];
+  int mtmNumBaseBlocks;    // number of blocks from which to build attack
+                            // don't define if zig zag
+  int mtmNumExtraBlocks;   // number of extra blocks on each side
+  int mtmNumLeftBuckets;    // number of buckets on the "left" of cluster
+  int mtmNumRightBuckets;    // number of buckets on the "right" of cluster
+                            // don't define if zig zag
   int numChildren;   // for OtM attack
   int chaffMax;
   int chaffMin;
   int numRounds;  // number of attack repeats 
                   // (needed for statistical significance)
-  int numSamples;
+  int numSamples; // number of attack samples
   FILE *f;
 } attack_setup;
+
+// the routine that produces a block expects two values as input,
+// which are historically called sample and child (based on initial
+// MtO attack software).  This structure is used for MtM attacks.
+typedef struct blocks_t {
+  int sampleNum;
+  int childNum;
+} blocks;
+
+#define MAX_NUM_BLOCKS 16
+#define MAX_NUM_BUCKETS_PER_SIDE 16
+
+typedef struct mtm_bucket_t {
+  int numBlocks;
+  int blocks[MAX_NUM_BLOCKS];
+} mtm_bucket;
+
+typedef struct mtm_cluster_t {
+  int numLeft;
+  mtm_bucket leftBuckets[MAX_NUM_BUCKETS_PER_SIDE];
+  int numRight;
+  mtm_bucket rightBuckets[MAX_NUM_BUCKETS_PER_SIDE];
+} mtm_cluster;

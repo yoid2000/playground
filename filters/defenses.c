@@ -299,7 +299,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
       //     sizes are close etc.
       // first check for OtO attack
       adjustment += checkNearMatchAndTouchNonOverlap(bp, bp1);
-      if (as->defense > OtO_DEFENSE) {
+      if (as->defense >= MtO_DEFENSE) {
         // now deal with MtO attacks
         // add child link
         if (bp->bsize >= (bp1->bsize + LOW_COUNT_SOFT_THRESHOLD)) {

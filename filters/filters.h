@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <sys/queue.h>
 
 #define SIZE_CLOSE_THRESH 30
 
@@ -43,6 +44,7 @@ typedef struct bucket_t {
   int sorted;	    // 1 if the user list has been sorted
   unsigned int children[MAX_CHILDREN];    // bucket index number
   int numChildren;
+  LIST_ENTRY(bucket_t) mtm_list;
 } bucket;
 
 typedef struct compare_t {
