@@ -7,7 +7,6 @@
 #include "./utilities.h"
 #include "./defense.h"
 
-// externs needed to keep compiler from warning
 extern bucket *makeBucket(int arg1);
 extern bucket *makeRandomBucket(int arg1);
 extern bucket *makeRandomBucketFromList(int arg1, bucket *arg2);
@@ -22,6 +21,7 @@ extern bucket *makeSegregatedBucketFromList(int mask,
                              unsigned int victim,
                              bucket *userList, 
                              int userListSize);
+extern blocks *defineBlocks(int samples, int blocksPerSample);
 
 
 #define USER_LIST_SIZE 0x100000  
@@ -150,6 +150,45 @@ makeChaffBuckets(bucket *userList, attack_setup *as) {
     // printf("Attack: size %d, overlap %d\n", bp2->bsize, overlap);
     noisyCount = putBucket(bp2, as);
   }
+}
+
+float
+oneMtMattack(int numSamples, bucket *userList, attack_setup *as)
+{
+  int i;
+  bucket *vbp;  // victim
+  blocks *block_array;
+  mtm_cluster mc;
+
+  // if zigzag, only the number of buckets needs to be defined.  Here
+  // we set mtmNumBaseBlocks according to number of buckets.
+  if (as->mtmType == ZIG_ZAG) {
+    // need to set base blocks based on desired number of buckets per side
+    as->mtmNumRightBuckets = as->mtmNumLeftBuckets;
+    as->mtmNumBaseBlocks = (as->mtmNumLeftBuckets * 2) - 1;
+  }
+
+  if ((as->mtmNumLeftBuckets > MAX_NUM_BUCKETS_PER_SIDE) ||
+      (as->mtmNumRightBuckets > MAX_NUM_BUCKETS_PER_SIDE)) {
+    printf("oneMtMattack ERROR2 %d, %d\n",  
+                   as->mtmNumLeftBuckets, as->mtmNumRightBuckets);
+    exit(1);
+  }
+  if ((as->mtmNumBaseBlocks + as->mtmNumExtraBlocks) > MAX_NUM_BLOCKS) {
+    printf("oneMtMattack ERROR3 %d, %d\n",  
+                   as->mtmNumBaseBlocks, as->mtmNumExtraBlocks);
+    exit(1);
+  }
+
+  // make victim
+  vbp = makeRandomBucketFromList(1, userList);
+  // define all needed blocks in advance
+  block_array = defineBlocks(numSamples, 
+                             (as->mtmNumBaseBlocks + as->mtmNumExtraBlocks));
+  for (i = 0; i < numSamples; i++) {
+    defineCluster(&mc, i, as);
+  }
+  free(block_array);
 }
 
 float
@@ -371,53 +410,6 @@ runAttack(bucket *userList, attack_setup *as)
   computeDefenseStats(as->numRounds, as);
 }
 
-do_getSegregateMask(bucket *userList, int numSamples, int numChildren)
-{
-  int mask, max_bsize, shift;
-  int i, j;
-  int max=0, min=100000000;
-  bucket *bp;
-
-  getSegregateMask(numSamples, numChildren, &mask, &max_bsize, &shift);
-  printf("\n%d samples, %d children, mask %x (%d), max_bsize %d, shift %d\n",
-                     numSamples, numChildren, mask, mask, max_bsize, shift);
-  printf("Expect %d users per bucket\n", 
-         (int)((float) USER_LIST_SIZE / (float)mask));
-
-  for (i = 0; i < numSamples; i++) {
-    for (j = 0; j < numChildren; j++) {
-      bp = makeSegregatedBucketFromList(mask, shift, max_bsize, i, j,
-                             0x38447262, userList, USER_LIST_SIZE);
-      max = (bp->bsize > max)?bp->bsize:max;
-      min = (bp->bsize < min)?bp->bsize:min;
-    }
-  }
-  printf("max bucket %d, min bucket %d\n", max, min);
-}
-
-test_getSegregateMask(bucket *userList)
-{
-  int numSamples, numChildren;
-
-  numSamples = 10; numChildren = 2;
-  do_getSegregateMask(userList, numSamples, numChildren);
-
-  numSamples = 20; numChildren = 2;
-  do_getSegregateMask(userList, numSamples, numChildren);
-
-  numSamples = 80; numChildren = 16;
-  do_getSegregateMask(userList, numSamples, numChildren);
-
-  numSamples = 160; numChildren = 20;
-  do_getSegregateMask(userList, numSamples, numChildren);
-
-  numSamples = 320; numChildren = 20;
-  do_getSegregateMask(userList, numSamples, numChildren);
-
-  numSamples = 640; numChildren = 20;
-  do_getSegregateMask(userList, numSamples, numChildren);
-}
-
 printCommandLines(attack_setup *as)
 {
   int i;
@@ -539,7 +531,6 @@ main(int argc, char *argv[])
   if (seed == 0) {
     seed = time(NULL);
   }
-  printf("seed = %d\n", seed);
   srand48((long int) seed);
 
   sprintf(temp, ".%d", getRandInteger(1000, 9999));
@@ -579,4 +570,53 @@ main(int argc, char *argv[])
   }
   //test_getSegregateMask(userList); exit(1);
   runAttack(userList, &as);
+}
+
+/************  TESTS ****************/
+
+do_getSegregateMask(bucket *userList, int numSamples, int numChildren)
+{
+  int mask, max_bsize, shift;
+  int i, j;
+  int max=0, min=100000000;
+  bucket *bp;
+
+  getSegregateMask(numSamples, numChildren, &mask, &max_bsize, &shift);
+  printf("\n%d samples, %d children, mask %x (%d), max_bsize %d, shift %d\n",
+                     numSamples, numChildren, mask, mask, max_bsize, shift);
+  printf("Expect %d users per bucket\n", 
+         (int)((float) USER_LIST_SIZE / (float)mask));
+
+  for (i = 0; i < numSamples; i++) {
+    for (j = 0; j < numChildren; j++) {
+      bp = makeSegregatedBucketFromList(mask, shift, max_bsize, i, j,
+                             0x38447262, userList, USER_LIST_SIZE);
+      max = (bp->bsize > max)?bp->bsize:max;
+      min = (bp->bsize < min)?bp->bsize:min;
+    }
+  }
+  printf("max bucket %d, min bucket %d\n", max, min);
+}
+
+test_getSegregateMask(bucket *userList)
+{
+  int numSamples, numChildren;
+
+  numSamples = 10; numChildren = 2;
+  do_getSegregateMask(userList, numSamples, numChildren);
+
+  numSamples = 20; numChildren = 2;
+  do_getSegregateMask(userList, numSamples, numChildren);
+
+  numSamples = 80; numChildren = 16;
+  do_getSegregateMask(userList, numSamples, numChildren);
+
+  numSamples = 160; numChildren = 20;
+  do_getSegregateMask(userList, numSamples, numChildren);
+
+  numSamples = 320; numChildren = 20;
+  do_getSegregateMask(userList, numSamples, numChildren);
+
+  numSamples = 640; numChildren = 20;
+  do_getSegregateMask(userList, numSamples, numChildren);
 }
