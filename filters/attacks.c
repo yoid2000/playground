@@ -187,6 +187,7 @@ oneMtMattack(int numSamples, bucket *userList, attack_setup *as)
                              (as->mtmNumBaseBlocks + as->mtmNumExtraBlocks));
   for (i = 0; i < numSamples; i++) {
     defineCluster(&mc, i, as);
+// zzzz
   }
   free(block_array);
 }

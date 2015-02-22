@@ -82,15 +82,17 @@ typedef struct blocks_t {
 
 #define MAX_NUM_BLOCKS 16
 #define MAX_NUM_BUCKETS_PER_SIDE 16
+#define NO_BLOCK 0x7fffffff;
 
 typedef struct mtm_bucket_t {
   int numBlocks;
   int blocks[MAX_NUM_BLOCKS];
 } mtm_bucket;
 
+#define LEFT 0
+#define RIGHT 1
 typedef struct mtm_cluster_t {
-  int numLeft;
-  mtm_bucket leftBuckets[MAX_NUM_BUCKETS_PER_SIDE];
-  int numRight;
-  mtm_bucket rightBuckets[MAX_NUM_BUCKETS_PER_SIDE];
+  int numBuckets[2];
+  mtm_bucket bucket[2][MAX_NUM_BUCKETS_PER_SIDE];
+  unsigned char strings[2][32];
 } mtm_cluster;

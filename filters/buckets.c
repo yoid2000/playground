@@ -424,23 +424,17 @@ getFirstBlockNum(int sampleNum, attack_setup *as)
 
 printMtmCluster(mtm_cluster *mc)
 {
-  int i, j;
+  int i, j, s;
 
-  printf("%d left buckets:\n", mc->numLeft);
-  for (i = 0; i < mc->numLeft; i++) {
-    printf("    B%d, %d blocks: ", i, mc->leftBuckets[i].numBlocks);
-    for (j = 0; j < mc->leftBuckets[i].numBlocks; j++) {
-      printf(" %d", mc->leftBuckets[i].blocks[j]);
+  for (s = 0; s < 2; s++) {
+    printf("%d %s buckets:\n", mc->numBuckets[s], mc->strings[s]);
+    for (i = 0; i < mc->numBuckets[s]; i++) {
+      printf("    B%d, %d blocks: ", i, mc->bucket[s][i].numBlocks);
+      for (j = 0; j < mc->bucket[s][i].numBlocks; j++) {
+        printf(" %d", mc->bucket[s][i].blocks[j]);
+      }
+      printf("\n");
     }
-    printf("\n");
-  }
-  printf("%d right buckets:\n", mc->numRight);
-  for (i = 0; i < mc->numRight; i++) {
-    printf("    B%d, %d blocks: ", i, mc->rightBuckets[i].numBlocks);
-    for (j = 0; j < mc->rightBuckets[i].numBlocks; j++) {
-      printf(" %d", mc->rightBuckets[i].blocks[j]);
-    }
-    printf("\n");
   }
 }
 
@@ -469,99 +463,124 @@ bucketBlocksMatch(mtm_bucket *b1, mtm_bucket *b2)
 int
 sameOnBothSides(int block, mtm_cluster *mc)
 {
-  int numLeft = 0, numRight = 0;
-  int i, j;
+  int numOnSide[2];
+  int i, j, s;
 
-  for (i = 0; i < mc->numLeft; i++) {
-    for (j = 0; j < mc->leftBuckets[i].numBlocks; j++) {
-      if (mc->leftBuckets[i].blocks[j] == block) {
-        numLeft++;
-      }
-    }
-  }
-  for (i = 0; i < mc->numRight; i++) {
-    for (j = 0; j < mc->rightBuckets[i].numBlocks; j++) {
-      if (mc->rightBuckets[i].blocks[j] == block) {
-        numRight++;
-      }
-    }
-  }
-  if (numLeft == numRight) { return(1); }
-  else { return(0); }
-}
-
-/*
- * Return 1 if cluster good, 0 if cluster bad
- */
-int
-clusterPropertiesCheckGood(mtm_cluster *mc)
-{
-  int i, j, k;
-
-  // make sure no buckets have duplicate blocks
-  for (i = 0; i < mc->numLeft; i++) {
-    for (j = 0; j < mc->leftBuckets[i].numBlocks; j++) {
-      for (k = 0; k < mc->leftBuckets[i].numBlocks; k++) {
-        if (k == j) {continue;}
-        if (mc->leftBuckets[i].blocks[j] == mc->leftBuckets[i].blocks[k]) {
-          return(0);
+  for (s = 0; s < 2; s++) {
+    numOnSide[s] = 0;
+    for (i = 0; i < mc->numBuckets[s]; i++) {
+      for (j = 0; j < mc->bucket[s][i].numBlocks; j++) {
+        if (mc->bucket[s][i].blocks[j] == block) {
+          numOnSide[s]++;
         }
       }
     }
   }
-  for (i = 0; i < mc->numRight; i++) {
-    for (j = 0; j < mc->rightBuckets[i].numBlocks; j++) {
-      for (k = 0; k < mc->rightBuckets[i].numBlocks; k++) {
-        if (k == j) {continue;}
-        if (mc->rightBuckets[i].blocks[j] == mc->rightBuckets[i].blocks[k]) {
-          return(0);
+  if (numOnSide[LEFT] == numOnSide[RIGHT]) { return(1); }
+  else { return(0); }
+}
+
+// checkClusterProperties error codes
+#define NO_ERROR 0
+#define DUPLICATE_BLOCKS 1
+#define BUCKET_NOT_UNIQUE1 2
+#define BUCKET_NOT_UNIQUE2 3
+#define BUCKET_NOT_UNIQUE3 4
+#define DIFFERENT_NUM_BLOCKS 4
+#define EMPTY_BUCKETS 6
+/*
+ * Return 0 if cluster good, >0 if cluster bad
+ */
+int
+checkClusterProperties(mtm_cluster *mc)
+{
+  int s, i, j, k;
+
+  // make sure every bucket has at least one block
+  for (s = 0; s < 2; s++) {
+    for (i = 0; i < mc->numBuckets[s]; i++) {
+      if (mc->bucket[s][i].numBlocks == 0) {
+        return(EMPTY_BUCKETS);
+      }
+    }
+  }
+
+
+  // make sure no buckets have duplicate blocks
+  for (s = 0; s < 2; s++) {
+    for (i = 0; i < mc->numBuckets[s]; i++) {
+      for (j = 0; j < mc->bucket[s][i].numBlocks; j++) {
+        for (k = 0; k < mc->bucket[s][i].numBlocks; k++) {
+          if (k == j) {continue;}
+          if (mc->bucket[s][i].blocks[j] == mc->bucket[s][i].blocks[k]) {
+            return(DUPLICATE_BLOCKS);
+          }
         }
       }
     }
   }
   
   // make sure every bucket is unique
-  for (i = 0; i < mc->numLeft; i++) {
+  for (i = 0; i < mc->numBuckets[LEFT]; i++) {
     // compare left-side buckets
-    for (j = 0; j < mc->numLeft; j++) {
+    for (j = 0; j < mc->numBuckets[LEFT]; j++) {
       if (i == j) {continue;}
-      if (bucketBlocksMatch(&(mc->leftBuckets[i]), &(mc->leftBuckets[j]))) {
-        return(0);
+      if (bucketBlocksMatch(&(mc->bucket[LEFT][i]), &(mc->bucket[LEFT][j]))) {
+        return(BUCKET_NOT_UNIQUE1);
       }
     }
     // compare left-side with right-side buckets
-    for (j = 0; j < mc->numRight; j++) {
-      if (bucketBlocksMatch(&(mc->leftBuckets[i]), &(mc->rightBuckets[j]))) {
-        return(0);
+    for (j = 0; j < mc->numBuckets[RIGHT]; j++) {
+      if (bucketBlocksMatch(&(mc->bucket[LEFT][i]), &(mc->bucket[RIGHT][j]))) {
+        return(BUCKET_NOT_UNIQUE2);
       }
     }
   }
-  for (i = 0; i < mc->numRight; i++) {
+  for (i = 0; i < mc->numBuckets[RIGHT]; i++) {
     // compare right-side buckets
-    for (j = 0; j < mc->numRight; j++) {
+    for (j = 0; j < mc->numBuckets[RIGHT]; j++) {
       if (i == j) {continue;}
-      if (bucketBlocksMatch(&(mc->rightBuckets[i]), &(mc->rightBuckets[j]))) {
-        return(0);
+      if (bucketBlocksMatch(&(mc->bucket[RIGHT][i]), &(mc->bucket[RIGHT][j]))) {
+        return(BUCKET_NOT_UNIQUE3);
       }
     }
   }
 
   // make sure each side has the same number of each block
-  for (i = 0; i < mc->numLeft; i++) {
-    for (j = 0; j < mc->leftBuckets[i].numBlocks; j++) {
-      if (sameOnBothSides(mc->leftBuckets[i].blocks[j], mc) == 0) {
-        return(0);
+  for (s = 0; s < 2; s++) {
+    for (i = 0; i < mc->numBuckets[s]; i++) {
+      for (j = 0; j < mc->bucket[s][i].numBlocks; j++) {
+        if (sameOnBothSides(mc->bucket[s][i].blocks[j], mc) == 0) {
+          return(DIFFERENT_NUM_BLOCKS);
+        }
       }
     }
   }
-  for (i = 0; i < mc->numRight; i++) {
-    for (j = 0; j < mc->rightBuckets[i].numBlocks; j++) {
-      if (sameOnBothSides(mc->rightBuckets[i].blocks[j], mc) == 0) {
-        return(0);
-      }
+  return(NO_ERROR);
+}
+
+initMtmBucket(mtm_bucket *mb)
+{
+  int j;
+
+  mb->numBlocks = 0;
+  for (j = 0; j < MAX_NUM_BLOCKS; j++) {
+    mb->blocks[j] = NO_BLOCK;
+  }
+}
+
+initCluster(mtm_cluster *mc)
+{
+  int i, s;
+
+  strcpy(mc->strings[LEFT], "left");
+  strcpy(mc->strings[RIGHT], "right");
+  for (s = 0; s < 2; s++) {
+    mc->numBuckets[s] = 0;
+    for (i = 0; i < MAX_NUM_BUCKETS_PER_SIDE; i++) {
+      initMtmBucket(&(mc->bucket[s][i]));
     }
   }
-  return(1);
 }
 
 defineZigZagCluster(mtm_cluster *mc, int sampleNum, attack_setup *as)
@@ -571,34 +590,195 @@ defineZigZagCluster(mtm_cluster *mc, int sampleNum, attack_setup *as)
   int lbi=1, rbi=0;  // left and right bucket index
   int i;
 
-  mc->numLeft = as->mtmNumLeftBuckets;
-  mc->numRight = as->mtmNumRightBuckets;
+  initCluster(mc);
+  mc->numBuckets[LEFT] = as->mtmNumLeftBuckets;
+  mc->numBuckets[RIGHT] = as->mtmNumRightBuckets;
   // note numLeft and numRight are identical here
   first_bn = getFirstBlockNum(sampleNum, as);
   lbn = first_bn;
   rbn = lbn;
   // define initial left bucket
-  mc->leftBuckets[0].blocks[0] = lbn++;
-  mc->leftBuckets[0].numBlocks = 1;
+  mc->bucket[LEFT][0].blocks[0] = lbn++;
+  mc->bucket[LEFT][0].numBlocks = 1;
   // define remaining left buckets
-  for (i = 1; i < mc->numLeft; i++) {
-    mc->leftBuckets[i].blocks[0] = lbn++;
-    mc->leftBuckets[i].blocks[1] = lbn++;
-    mc->leftBuckets[i].numBlocks = 2;
+  for (i = 1; i < mc->numBuckets[LEFT]; i++) {
+    mc->bucket[LEFT][i].blocks[0] = lbn++;
+    mc->bucket[LEFT][i].blocks[1] = lbn++;
+    mc->bucket[LEFT][i].numBlocks = 2;
   }
   // define all but final right buckets
-  for (i = 0; i < (mc->numRight - 1); i++) {
-    mc->rightBuckets[i].blocks[0] = rbn++;
-    mc->rightBuckets[i].blocks[1] = rbn++;
-    mc->rightBuckets[i].numBlocks = 2;
+  for (i = 0; i < (mc->numBuckets[RIGHT] - 1); i++) {
+    mc->bucket[RIGHT][i].blocks[0] = rbn++;
+    mc->bucket[RIGHT][i].blocks[1] = rbn++;
+    mc->bucket[RIGHT][i].numBlocks = 2;
   }
   // define final right bucket
-  mc->rightBuckets[i].blocks[0] = rbn;
-  mc->rightBuckets[i].numBlocks = 1;
+  mc->bucket[RIGHT][i].blocks[0] = rbn;
+  mc->bucket[RIGHT][i].numBlocks = 1;
 }
 
+int
+blockIsAlreadyInBucket(int block, mtm_bucket *mb)
+{
+  int i;
+ 
+  for (i = 0; i < mb->numBlocks; i++) {
+    if (mb->blocks[i] == block) { return(1); }
+  }
+  return(0);
+}
+
+int
+blockWouldNotBeUnique(int block, mtm_cluster *mc, int s, int bucket)
+{
+  mtm_bucket mb;    // the bucket we want to make
+  int i;
+
+  initMtmBucket(&mb);
+  // copy the existing bucket into the new bucket
+  for (i = 0; i < mc->bucket[s][bucket].numBlocks; i++) {
+    mb.blocks[i] = mc->bucket[s][bucket].blocks[i];
+    mb.numBlocks++;
+  }
+  // speculatively add the proposed block to the new bucket
+  mb.blocks[mb.numBlocks] = block;
+  mb.numBlocks++;
+
+  // now compare the new bucket with buckets on the same side...
+  for (i = 0; i < mc->numBuckets[s]; i++) {
+    if (bucketBlocksMatch(&(mc->bucket[s][i]), &mb)) {
+      return(1);	// block would not be unique
+    }
+  }
+  // and on the other side....
+  s = (s == LEFT)?RIGHT:LEFT;
+  for (i = 0; i < mc->numBuckets[s]; i++) {
+    if (bucketBlocksMatch(&(mc->bucket[s][i]), &mb)) {
+      return(1);	// block would not be unique
+    }
+  }
+  return(0);      // block would be unique
+}
+
+addBlock(int selectedBucket, int s, mtm_cluster *mc, int block)
+{
+  int blockNum;
+
+  blockNum = mc->bucket[s][selectedBucket].numBlocks;
+  if (blockNum == MAX_NUM_BLOCKS) {
+    printf("addBlock() ERROR num blocks exceeded\n");
+    exit(1);
+  }
+  mc->bucket[s][selectedBucket].blocks[blockNum] = block;
+  mc->bucket[s][selectedBucket].numBlocks++;
+}
+
+/*
+ * Return 1 if block placed, 0 otherwise
+ */
+int
+placeBlock(int s, mtm_cluster *mc, int block)
+{
+  int numMin = 0;
+  int min = MAX_NUM_BLOCKS+1;
+  int selectedBucket = MAX_NUM_BUCKETS_PER_SIDE+1;
+  int buckets[MAX_NUM_BUCKETS_PER_SIDE];
+  int i;
+
+  // find the minimum sized bucket that doesn't already have the block
+  for (i = 0; i < mc->numBuckets[s]; i++) {
+    if (mc->bucket[s][i].numBlocks == 0) {
+      // if bucket is empty, just put the block here
+      numMin = 1;
+      selectedBucket = i;
+      min = 0;
+    }
+    // don't put the block in a bucket that already has the block
+    else if (blockIsAlreadyInBucket(block, &(mc->bucket[s][i]))) { continue; }
+    // don't pub block in a bucket if it wouldn't be unique
+    else if (blockWouldNotBeUnique(block, mc, s, i)) { continue; }
+    else if (mc->bucket[s][i].numBlocks < min) {
+      min = mc->bucket[s][i].numBlocks;
+      numMin = 0;
+      buckets[numMin++] = i;   // remember min bucket
+    }
+    else if (mc->bucket[s][i].numBlocks == min) {
+      buckets[numMin++] = i;    // remember min bucket
+    }
+  }
+  if (selectedBucket == MAX_NUM_BUCKETS_PER_SIDE+1) {
+    if (numMin == 0) {
+      return(0);
+    }
+    selectedBucket = buckets[getRandInteger(0, numMin-1)];
+  }
+  addBlock(selectedBucket, s, mc, block);
+  return(1);
+}
+
+/*
+ * Returns 0 if failed to define a proper cluster, else 1
+ * (can fail because it is a somewhat random process, which
+ *  may not find a solution)
+ */
+int
+fullClusterDefined(mtm_cluster *mc, int sampleNum, attack_setup *as)
+{
+  int first_bn, last_bn;  // first and last block numbers
+  int bn;
+  int roundNum = 0;
+  int clusterProperty;
+
+  initCluster(mc);
+
+  mc->numBuckets[LEFT] = as->mtmNumLeftBuckets;
+  mc->numBuckets[RIGHT] = as->mtmNumRightBuckets;
+  first_bn = getFirstBlockNum(sampleNum, as);
+  last_bn = first_bn + as->mtmNumBaseBlocks;  // (really last block plus 1)
+  bn = first_bn;
+  // we will round robin through the blocks, placing them in a random
+  // bucket on each side, until all blocks have been placed at least once,
+  // AND we have a proper cluster
+  while(1) {
+    if (placeBlock(LEFT, mc, bn) == 0) {return(0);}
+    if (placeBlock(RIGHT, mc, bn) == 0) {return(0);}
+    if (++bn >= last_bn) {
+      roundNum++;
+      bn = first_bn;
+      if (roundNum > (5 * (as->mtmNumBaseBlocks + as->mtmNumExtraBlocks) *
+                        as->mtmNumLeftBuckets * as->mtmNumRightBuckets)) {
+        return(0);
+      }
+    }
+    // lets check to see if we are done
+    if (roundNum) {
+      // we've placed each block at least once
+      clusterProperty = checkClusterProperties(mc);
+      if (clusterProperty == NO_ERROR) {
+        // done
+        break;
+      }
+    }
+  }
+  return(1);
+}
+
+/*
+ * Returns 0 if failed to define a proper cluster, else 1
+ * (can fail because it is a generally random process, which
+ *  may not find a solution)
+ */
 defineFullCluster(mtm_cluster *mc, int sampleNum, attack_setup *as)
 {
+  int i; 
+
+  for (i = 0; i < 10; i++) {
+    // try ten times to make a cluster
+    if (fullClusterDefined(mc, sampleNum, as) == 1) {
+      return(1);
+    }
+  }
+  return(0);
 }
 
 defineCluster(mtm_cluster *mc, int sampleNum, attack_setup *as)
@@ -760,9 +940,117 @@ getFirstChildComb(child_comb *c,
 
 /*********** TESTS **********/
 
+makeOneChange(mtm_cluster *mc)
+{
+  int s, b, a, nb;
+
+  s = getRandInteger(0,1);    // pick a side
+  b = getRandInteger(0, mc->numBuckets[s]-1);   // pick a bucket
+  a = getRandInteger(0,1);    // pick an action
+
+  if (a == 0) {
+    // add a block
+    nb = mc->bucket[s][b].numBlocks;
+    mc->bucket[s][b].blocks[nb] = mc->bucket[s][0].blocks[0];
+    mc->bucket[s][b].numBlocks++;
+  }
+  else if (a == 1) {
+    // remove a block
+    mc->bucket[s][b].numBlocks--;
+  }
+}
+
+test_fullClusterDefined() 
+{
+  mtm_cluster mc;
+  attack_setup as;
+  int numSamples, sn, fn, ret, i;
+  blocks *block_array;
+
+  numSamples = 20;
+  as.mtmNumLeftBuckets = 2;
+  as.mtmNumRightBuckets = 2;
+  as.mtmNumBaseBlocks = 4;
+  as.mtmNumExtraBlocks = 0;
+  block_array = defineBlocks(numSamples, 
+                             (as.mtmNumBaseBlocks + as.mtmNumExtraBlocks));
+  sn = 0;
+
+  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 100; goto fail;}
+  makeOneChange(&mc);
+  if ((ret = checkClusterProperties(&mc)) == 0) {fn = 200+ret; goto fail;}
+
+  sn = 2;
+  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 101; goto fail;}
+  makeOneChange(&mc);
+  if ((ret = checkClusterProperties(&mc)) == 0) {fn = 210+ret; goto fail;}
+
+  sn = 0;
+  as.mtmNumBaseBlocks = 3;
+  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 102; goto fail;}
+  makeOneChange(&mc);
+  if ((ret = checkClusterProperties(&mc)) == 0) {fn = 220+ret; goto fail;}
+  
+  as.mtmNumBaseBlocks = 5;
+  as.mtmNumLeftBuckets = 3;
+  as.mtmNumRightBuckets = 3;
+  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 103; goto fail;}
+  makeOneChange(&mc);
+  if ((ret = checkClusterProperties(&mc)) == 0) {fn = 230+ret; goto fail;}
+  
+  as.mtmNumBaseBlocks = 4;
+  as.mtmNumLeftBuckets = 3;
+  as.mtmNumRightBuckets = 3;
+  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 104; goto fail;}
+  makeOneChange(&mc);
+  if ((ret = checkClusterProperties(&mc)) == 0) {fn = 240+ret; goto fail;}
+  
+  as.mtmNumBaseBlocks = 3;
+  as.mtmNumLeftBuckets = 3;
+  as.mtmNumRightBuckets = 3;
+  if (defineFullCluster(&mc, sn, &as) == 1) {fn = 105; goto fail;}
+  
+  as.mtmNumBaseBlocks = 3;
+  as.mtmNumLeftBuckets = 2;
+  as.mtmNumRightBuckets = 2;
+  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 106; goto fail;}
+  makeOneChange(&mc);
+  if ((ret = checkClusterProperties(&mc)) == 0) {fn = 250+ret; goto fail;}
+
+  as.mtmNumBaseBlocks = 5;
+  as.mtmNumLeftBuckets = 1;
+  as.mtmNumRightBuckets = 5;
+  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 107; goto fail;}
+
+  for (i = 0; i < 10000; i++) {
+    as.mtmNumLeftBuckets = getRandInteger(1,5);
+    as.mtmNumRightBuckets = getRandInteger(2,5);
+    as.mtmNumBaseBlocks = as.mtmNumLeftBuckets + as.mtmNumRightBuckets - 1
+                          + getRandInteger(0,3);
+    if (defineFullCluster(&mc, sn, &as) != 1) {
+      fn = 10000+i; 
+      printf("Failed with left %d, right %d, base %d\n",
+            as.mtmNumLeftBuckets, as.mtmNumRightBuckets, as.mtmNumBaseBlocks);
+      goto fail;
+    }
+    makeOneChange(&mc);
+    if ((ret = checkClusterProperties(&mc)) == 0) {
+      fn = 20000+ret; 
+      goto fail;
+    }
+  }
+  
+  printf("test_fullClusterDefined() passed\n");
+  return;
+fail:
+  printMtmCluster(&mc);
+  printf("test_fullClusterDefined() FAIL %d\n", fn);
+}
+
 test_defineZigZagCluster()
 {
   mtm_cluster mc;
+  int retval;
   attack_setup as;
   int numSamples, sn, fn, nb;
   blocks *block_array;
@@ -777,22 +1065,22 @@ test_defineZigZagCluster()
   sn = 0;
   nb = as.mtmNumBaseBlocks + as.mtmNumExtraBlocks;
   defineZigZagCluster(&mc, sn, &as);
-  if (mc.numLeft != 2) {fn = 100; goto fail;}
-  if (mc.numRight != 2) {fn = 101; goto fail;}
-  if (mc.leftBuckets[0].numBlocks != 1) {fn = 102; goto fail;}
-  if (mc.leftBuckets[0].blocks[0] != (nb*sn)) {fn = 103; goto fail;}
-  if (mc.leftBuckets[1].numBlocks != 2) {fn = 104; goto fail;}
-  if (mc.leftBuckets[1].blocks[0] != (nb*sn)+1) {fn = 105; goto fail;}
-  if (mc.leftBuckets[1].blocks[1] != (nb*sn)+2) {fn = 106; goto fail;}
-  if (mc.rightBuckets[0].numBlocks != 2) {fn = 107; goto fail;}
-  if (mc.rightBuckets[0].blocks[0] != (nb*sn)) {fn = 108; goto fail;}
-  if (mc.rightBuckets[0].blocks[1] != (nb*sn)+1) {fn = 109; goto fail;}
-  if (mc.rightBuckets[1].numBlocks != 1) {fn = 110; goto fail;}
-  if (mc.rightBuckets[1].blocks[0] != (nb*sn)+2) {fn = 111; goto fail;}
-  if (clusterPropertiesCheckGood(&mc) != 1) {fn = 118; goto fail;}
+  if (mc.numBuckets[LEFT] != 2) {fn = 100; goto fail;}
+  if (mc.numBuckets[RIGHT] != 2) {fn = 101; goto fail;}
+  if (mc.bucket[LEFT][0].numBlocks != 1) {fn = 102; goto fail;}
+  if (mc.bucket[LEFT][0].blocks[0] != (nb*sn)) {fn = 103; goto fail;}
+  if (mc.bucket[LEFT][1].numBlocks != 2) {fn = 104; goto fail;}
+  if (mc.bucket[LEFT][1].blocks[0] != (nb*sn)+1) {fn = 105; goto fail;}
+  if (mc.bucket[LEFT][1].blocks[1] != (nb*sn)+2) {fn = 106; goto fail;}
+  if (mc.bucket[RIGHT][0].numBlocks != 2) {fn = 107; goto fail;}
+  if (mc.bucket[RIGHT][0].blocks[0] != (nb*sn)) {fn = 108; goto fail;}
+  if (mc.bucket[RIGHT][0].blocks[1] != (nb*sn)+1) {fn = 109; goto fail;}
+  if (mc.bucket[RIGHT][1].numBlocks != 1) {fn = 110; goto fail;}
+  if (mc.bucket[RIGHT][1].blocks[0] != (nb*sn)+2) {fn = 111; goto fail;}
+  if ((retval = checkClusterProperties(&mc)) != 0) {fn = 120+retval; goto fail;}
   // make cluster bad, and check again
-  mc.rightBuckets[1].blocks[0] = (nb*sn)+4;
-  if (clusterPropertiesCheckGood(&mc) == 1) {fn = 119; goto fail;}
+  mc.bucket[RIGHT][1].blocks[0] = (nb*sn)+4;
+  if ((retval = checkClusterProperties(&mc)) == 0) {fn = 130+retval; goto fail;}
   
   free(block_array);
 
@@ -804,28 +1092,28 @@ test_defineZigZagCluster()
   sn = 2;
   nb = as.mtmNumBaseBlocks + as.mtmNumExtraBlocks;
   defineZigZagCluster(&mc, sn, &as);
-  if (mc.numLeft != 3) {fn = 200; goto fail;}
-  if (mc.numRight != 3) {fn = 201; goto fail;}
-  if (mc.leftBuckets[0].numBlocks != 1) {fn = 202; goto fail;}
-  if (mc.leftBuckets[0].blocks[0] != (nb*sn)) {fn = 203; goto fail;}
-  if (mc.leftBuckets[1].numBlocks != 2) {fn = 204; goto fail;}
-  if (mc.leftBuckets[1].blocks[0] != (nb*sn)+1) {fn = 205; goto fail;}
-  if (mc.leftBuckets[1].blocks[1] != (nb*sn)+2) {fn = 206; goto fail;}
-  if (mc.leftBuckets[2].numBlocks != 2) {fn = 212; goto fail;}
-  if (mc.leftBuckets[2].blocks[0] != (nb*sn)+3) {fn = 213; goto fail;}
-  if (mc.leftBuckets[2].blocks[1] != (nb*sn)+4) {fn = 214; goto fail;}
-  if (mc.rightBuckets[0].numBlocks != 2) {fn = 207; goto fail;}
-  if (mc.rightBuckets[0].blocks[0] != (nb*sn)) {fn = 208; goto fail;}
-  if (mc.rightBuckets[0].blocks[1] != (nb*sn)+1) {fn = 209; goto fail;}
-  if (mc.rightBuckets[1].numBlocks != 2) {fn = 215; goto fail;}
-  if (mc.rightBuckets[1].blocks[0] != (nb*sn)+2) {fn = 216; goto fail;}
-  if (mc.rightBuckets[1].blocks[1] != (nb*sn)+3) {fn = 217; goto fail;}
-  if (mc.rightBuckets[2].numBlocks != 1) {fn = 210; goto fail;}
-  if (mc.rightBuckets[2].blocks[0] != (nb*sn)+4) {fn = 211; goto fail;}
-  if (clusterPropertiesCheckGood(&mc) != 1) {fn = 218; goto fail;}
+  if (mc.numBuckets[LEFT] != 3) {fn = 200; goto fail;}
+  if (mc.numBuckets[RIGHT] != 3) {fn = 201; goto fail;}
+  if (mc.bucket[LEFT][0].numBlocks != 1) {fn = 202; goto fail;}
+  if (mc.bucket[LEFT][0].blocks[0] != (nb*sn)) {fn = 203; goto fail;}
+  if (mc.bucket[LEFT][1].numBlocks != 2) {fn = 204; goto fail;}
+  if (mc.bucket[LEFT][1].blocks[0] != (nb*sn)+1) {fn = 205; goto fail;}
+  if (mc.bucket[LEFT][1].blocks[1] != (nb*sn)+2) {fn = 206; goto fail;}
+  if (mc.bucket[LEFT][2].numBlocks != 2) {fn = 212; goto fail;}
+  if (mc.bucket[LEFT][2].blocks[0] != (nb*sn)+3) {fn = 213; goto fail;}
+  if (mc.bucket[LEFT][2].blocks[1] != (nb*sn)+4) {fn = 214; goto fail;}
+  if (mc.bucket[RIGHT][0].numBlocks != 2) {fn = 207; goto fail;}
+  if (mc.bucket[RIGHT][0].blocks[0] != (nb*sn)) {fn = 208; goto fail;}
+  if (mc.bucket[RIGHT][0].blocks[1] != (nb*sn)+1) {fn = 209; goto fail;}
+  if (mc.bucket[RIGHT][1].numBlocks != 2) {fn = 215; goto fail;}
+  if (mc.bucket[RIGHT][1].blocks[0] != (nb*sn)+2) {fn = 216; goto fail;}
+  if (mc.bucket[RIGHT][1].blocks[1] != (nb*sn)+3) {fn = 217; goto fail;}
+  if (mc.bucket[RIGHT][2].numBlocks != 1) {fn = 210; goto fail;}
+  if (mc.bucket[RIGHT][2].blocks[0] != (nb*sn)+4) {fn = 211; goto fail;}
+  if ((retval = checkClusterProperties(&mc)) != 0) {fn = 220+retval; goto fail;}
   // put two identical blocks in same bucket
-  mc.rightBuckets[1].blocks[1] = (nb*sn)+2;
-  if (clusterPropertiesCheckGood(&mc) == 1) {fn = 219; goto fail;}
+  mc.bucket[RIGHT][1].blocks[1] = (nb*sn)+2;
+  if ((retval = checkClusterProperties(&mc)) == 0) {fn = 230+retval; goto fail;}
 
   printf("test_defineZigZigCluster() passed\n");
   printMtmCluster(&mc);
