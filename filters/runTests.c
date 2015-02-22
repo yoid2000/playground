@@ -30,5 +30,6 @@ main()
   // test_getNonOverlap3();
   // test_linkedList();
   // test_defineBlocks();
-  test_defineZigZagCluster();
+  // test_defineZigZagCluster();
+  test_fullClusterDefined();
 }
