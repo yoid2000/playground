@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include "./filters.h"
-#include "./defense.h"
+#include "./attacks.h"
 
 // externs needed to keep compiler from warning
 extern bucket *makeRandomBucket(int arg1);
@@ -400,12 +400,13 @@ makeRandomBucketFromList(int bsize, bucket *userList)
  *  Returns an array of block definitions that must be freed by caller
  */
 blocks *
-defineBlocks(int samples, int blocksPerSample)
+defineBlocks(int samples, int blocksPerSample, int *lastBlock)
 {
   blocks *bap;
   int i, j, k;
 
-  bap = (blocks *) calloc(samples*blocksPerSample, sizeof(blocks));
+  *lastBlock = samples*blocksPerSample;
+  bap = (blocks *) calloc(*lastBlock, sizeof(blocks));
   k = 0;
   for (i = 0; i < samples; i++) {
     for (j = 0; j < blocksPerSample; j++) {
@@ -415,11 +416,6 @@ defineBlocks(int samples, int blocksPerSample)
     }
   }
   return(bap);
-}
-
-getFirstBlockNum(int sampleNum, attack_setup *as)
-{
-  return(sampleNum * (as->mtmNumBaseBlocks + as->mtmNumExtraBlocks));
 }
 
 printMtmCluster(mtm_cluster *mc)
@@ -722,19 +718,18 @@ placeBlock(int s, mtm_cluster *mc, int block)
  *  may not find a solution)
  */
 int
-fullClusterDefined(mtm_cluster *mc, int sampleNum, attack_setup *as)
+fullClusterDefined(mtm_cluster *mc, int first_bn, attack_setup *as)
 {
-  int first_bn, last_bn;  // first and last block numbers
+  int last_bn;  // first and last block numbers
   int bn;
   int roundNum = 0;
   int clusterProperty;
 
   initCluster(mc);
 
-  mc->numBuckets[LEFT] = as->mtmNumLeftBuckets;
-  mc->numBuckets[RIGHT] = as->mtmNumRightBuckets;
-  first_bn = getFirstBlockNum(sampleNum, as);
-  last_bn = first_bn + as->mtmNumBaseBlocks;  // (really last block plus 1)
+  mc->numBuckets[LEFT] = as->numLeftBuckets;
+  mc->numBuckets[RIGHT] = as->numRightBuckets;
+  last_bn = first_bn + as->numBaseBlocks;  // (really last block plus 1)
   bn = first_bn;
   // we will round robin through the blocks, placing them in a random
   // bucket on each side, until all blocks have been placed at least once,
@@ -745,8 +740,8 @@ fullClusterDefined(mtm_cluster *mc, int sampleNum, attack_setup *as)
     if (++bn >= last_bn) {
       roundNum++;
       bn = first_bn;
-      if (roundNum > (5 * (as->mtmNumBaseBlocks + as->mtmNumExtraBlocks) *
-                        as->mtmNumLeftBuckets * as->mtmNumRightBuckets)) {
+      if (roundNum > (5 * (as->numBaseBlocks + as->numExtraBlocks) *
+                        as->numLeftBuckets * as->numRightBuckets)) {
         return(0);
       }
     }
@@ -760,7 +755,7 @@ fullClusterDefined(mtm_cluster *mc, int sampleNum, attack_setup *as)
       }
     }
   }
-  addExtraBlocks(mc, as->mtmNumExtraBlocks, last_bn);
+  addExtraBlocks(mc, as->numExtraBlocks, last_bn);
   return(1);
 }
 
@@ -769,13 +764,13 @@ fullClusterDefined(mtm_cluster *mc, int sampleNum, attack_setup *as)
  * (can fail because it is a generally random process, which
  *  may not find a solution)
  */
-defineCluster(mtm_cluster *mc, int sampleNum, attack_setup *as)
+defineCluster(mtm_cluster *mc, int firstBlock, attack_setup *as)
 {
   int i; 
 
   for (i = 0; i < 10; i++) {
     // try ten times to make a cluster
-    if (fullClusterDefined(mc, sampleNum, as) == 1) {
+    if (fullClusterDefined(mc, firstBlock, as) == 1) {
       return(1);
     }
   }
@@ -955,74 +950,74 @@ test_defineCluster()
 {
   mtm_cluster mc;
   attack_setup as;
-  int numSamples, sn, fn, ret, i;
+  int numSamples, fbn, fn, ret, i, lastBlock;
   blocks *block_array;
 
   numSamples = 20;
-  as.mtmNumLeftBuckets = 2;
-  as.mtmNumRightBuckets = 2;
-  as.mtmNumBaseBlocks = 4;
-  as.mtmNumExtraBlocks = 0;
-  block_array = defineBlocks(numSamples, 
-                             (as.mtmNumBaseBlocks + as.mtmNumExtraBlocks));
-  sn = 0;
+  as.numLeftBuckets = 2;
+  as.numRightBuckets = 2;
+  as.numBaseBlocks = 4;
+  as.numExtraBlocks = 0;
+  block_array = defineBlocks(numSamples, (as.numBaseBlocks + as.numExtraBlocks),
+                                                 &lastBlock);
+  fbn = 0;	// first block number
 
-  if (defineCluster(&mc, sn, &as) != 1) {fn = 100; goto fail;}
+  if (defineCluster(&mc, fbn, &as) != 1) {fn = 100; goto fail;}
   makeOneChange(&mc);
   if ((ret = checkClusterProperties(&mc)) == 0) {fn = 200+ret; goto fail;}
 
-  sn = 2;
-  if (defineCluster(&mc, sn, &as) != 1) {fn = 101; goto fail;}
+  fbn = 20;
+  if (defineCluster(&mc, fbn, &as) != 1) {fn = 101; goto fail;}
   makeOneChange(&mc);
   if ((ret = checkClusterProperties(&mc)) == 0) {fn = 210+ret; goto fail;}
 
-  sn = 0;
-  as.mtmNumBaseBlocks = 3;
-  if (defineCluster(&mc, sn, &as) != 1) {fn = 102; goto fail;}
+  fbn = 0;
+  as.numBaseBlocks = 3;
+  if (defineCluster(&mc, fbn, &as) != 1) {fn = 102; goto fail;}
   makeOneChange(&mc);
   if ((ret = checkClusterProperties(&mc)) == 0) {fn = 220+ret; goto fail;}
   
-  as.mtmNumBaseBlocks = 5;
-  as.mtmNumLeftBuckets = 3;
-  as.mtmNumRightBuckets = 3;
-  if (defineCluster(&mc, sn, &as) != 1) {fn = 103; goto fail;}
+  as.numBaseBlocks = 5;
+  as.numLeftBuckets = 3;
+  as.numRightBuckets = 3;
+  if (defineCluster(&mc, fbn, &as) != 1) {fn = 103; goto fail;}
   makeOneChange(&mc);
   if ((ret = checkClusterProperties(&mc)) == 0) {fn = 230+ret; goto fail;}
   
-  as.mtmNumBaseBlocks = 4;
-  as.mtmNumLeftBuckets = 3;
-  as.mtmNumRightBuckets = 3;
-  if (defineCluster(&mc, sn, &as) != 1) {fn = 104; goto fail;}
+  as.numBaseBlocks = 4;
+  as.numLeftBuckets = 3;
+  as.numRightBuckets = 3;
+  if (defineCluster(&mc, fbn, &as) != 1) {fn = 104; goto fail;}
   makeOneChange(&mc);
   if ((ret = checkClusterProperties(&mc)) == 0) {fn = 240+ret; goto fail;}
   
-  as.mtmNumBaseBlocks = 3;
-  as.mtmNumLeftBuckets = 3;
-  as.mtmNumRightBuckets = 3;
-  if (defineCluster(&mc, sn, &as) == 1) {fn = 105; goto fail;}
+  as.numBaseBlocks = 3;
+  as.numLeftBuckets = 3;
+  as.numRightBuckets = 3;
+  if (defineCluster(&mc, fbn, &as) == 1) {fn = 105; goto fail;}
   
-  as.mtmNumBaseBlocks = 3;
-  as.mtmNumLeftBuckets = 2;
-  as.mtmNumRightBuckets = 2;
-  if (defineCluster(&mc, sn, &as) != 1) {fn = 106; goto fail;}
+  as.numBaseBlocks = 3;
+  as.numLeftBuckets = 2;
+  as.numRightBuckets = 2;
+  if (defineCluster(&mc, fbn, &as) != 1) {fn = 106; goto fail;}
   makeOneChange(&mc);
   if ((ret = checkClusterProperties(&mc)) == 0) {fn = 250+ret; goto fail;}
 
-  as.mtmNumBaseBlocks = 5;
-  as.mtmNumLeftBuckets = 1;
-  as.mtmNumRightBuckets = 5;
-  if (defineCluster(&mc, sn, &as) != 1) {fn = 107; goto fail;}
+  as.numBaseBlocks = 5;
+  as.numLeftBuckets = 1;
+  as.numRightBuckets = 5;
+  if (defineCluster(&mc, fbn, &as) != 1) {fn = 107; goto fail;}
 
   for (i = 0; i < 10000; i++) {
-    as.mtmNumLeftBuckets = getRandInteger(1,5);
-    as.mtmNumRightBuckets = getRandInteger(2,5);
-    as.mtmNumBaseBlocks = as.mtmNumLeftBuckets + as.mtmNumRightBuckets - 1
+    as.numLeftBuckets = getRandInteger(1,5);
+    as.numRightBuckets = getRandInteger(2,5);
+    as.numBaseBlocks = as.numLeftBuckets + as.numRightBuckets - 1
                           + getRandInteger(0,3);
-    as.mtmNumExtraBlocks = getRandInteger(0,3);
-    if (defineCluster(&mc, sn, &as) != 1) {
+    as.numExtraBlocks = getRandInteger(0,3);
+    if (defineCluster(&mc, fbn, &as) != 1) {
       fn = 10000+i; 
       printf("Failed with left %d, right %d, base %d\n",
-            as.mtmNumLeftBuckets, as.mtmNumRightBuckets, as.mtmNumBaseBlocks);
+            as.numLeftBuckets, as.numRightBuckets, as.numBaseBlocks);
       goto fail;
     }
     makeOneChange(&mc);
@@ -1042,9 +1037,9 @@ fail:
 test_defineBlocks()
 {
   blocks *block_array;
-  int i, j, k;
+  int i, j, k, lastBlock;
 
-  block_array = defineBlocks(3, 4);
+  block_array = defineBlocks(3, 4, &lastBlock);
   k = 0;
   for (i = 0; i < 3; i++) {
     for (j = 0; j < 4; j++) {

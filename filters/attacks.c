@@ -5,7 +5,7 @@
 #include <time.h>
 #include "./filters.h"
 #include "./utilities.h"
-#include "./defense.h"
+#include "./attacks.h"
 
 extern bucket *makeBucket(int arg1);
 extern bucket *makeRandomBucket(int arg1);
@@ -21,7 +21,7 @@ extern bucket *makeSegregatedBucketFromList(int mask,
                              unsigned int victim,
                              bucket *userList, 
                              int userListSize);
-extern blocks *defineBlocks(int samples, int blocksPerSample);
+extern blocks *defineBlocks(int samples, int blocksPerSample, int *lastBlock);
 
 
 #define USER_LIST_SIZE 0x100000  
@@ -153,44 +153,49 @@ makeChaffBuckets(bucket *userList, attack_setup *as) {
 }
 
 float
-oneMtMattack(int numSamples, bucket *userList, attack_setup *as)
+oneMtMattack(int numSamples, 
+             bucket *userList, 
+             attack_setup *as, 
+             blocks *block_array,
+             int lastBlock)
 {
-  int i;
+  int i, baseBlocks, startBlock=0;
   bucket *vbp;  // victim
-  blocks *block_array;
   mtm_cluster mc;
 
-  // if zigzag, only the number of buckets needs to be defined.  Here
-  // we set mtmNumBaseBlocks according to number of buckets.
-// zzzz
-  if (as->mtmType == ZIG_ZAG) {
-    // need to set base blocks based on desired number of buckets per side
-    as->mtmNumRightBuckets = as->mtmNumLeftBuckets;
-    as->mtmNumBaseBlocks = (as->mtmNumLeftBuckets * 2) - 1;
-  }
-
-  if ((as->mtmNumLeftBuckets > MAX_NUM_BUCKETS_PER_SIDE) ||
-      (as->mtmNumRightBuckets > MAX_NUM_BUCKETS_PER_SIDE)) {
-    printf("oneMtMattack ERROR2 %d, %d\n",  
-                   as->mtmNumLeftBuckets, as->mtmNumRightBuckets);
-    exit(1);
-  }
-  if ((as->mtmNumBaseBlocks + as->mtmNumExtraBlocks) > MAX_NUM_BLOCKS) {
-    printf("oneMtMattack ERROR3 %d, %d\n",  
-                   as->mtmNumBaseBlocks, as->mtmNumExtraBlocks);
+  if ((as->maxLeftBuckets > MAX_NUM_BUCKETS_PER_SIDE) ||
+      (as->maxRightBuckets > MAX_NUM_BUCKETS_PER_SIDE)) {
+    printf("oneMtMattack ERROR1 %d, %d\n",  
+                   as->maxLeftBuckets, as->maxRightBuckets);
     exit(1);
   }
 
   // make victim
   vbp = makeRandomBucketFromList(1, userList);
-  // define all needed blocks in advance
-  block_array = defineBlocks(numSamples, 
-                             (as->mtmNumBaseBlocks + as->mtmNumExtraBlocks));
   for (i = 0; i < numSamples; i++) {
-    defineCluster(&mc, i, as);
+    as->numLeftBuckets = getRandInteger(as->minLeftBuckets, 
+                                                  as->maxLeftBuckets);
+    as->numRightBuckets = getRandInteger(as->minRightBuckets, 
+                                                  as->maxRightBuckets);
+    baseBlocks = as->numBaseBlocks + 
+                 as->numLeftBuckets + as->numRightBuckets - 1;
+
+    if ((startBlock + baseBlocks) >= lastBlock) {
+      printf("oneMtMattack ERROR2\n");
+      exit(1);
+    }
+
+    if ((baseBlocks + as->numExtraBlocks) > MAX_NUM_BLOCKS) {
+      printf("oneMtMattack ERROR3 %d, %d\n",  
+                     baseBlocks, as->numExtraBlocks);
+      exit(1);
+    }
+
+    if (defineCluster(&mc, startBlock, as) == 0) {
 // zzzz
+    }
+    startBlock += baseBlocks + as->numExtraBlocks;
   }
-  free(block_array);
 }
 
 float
@@ -383,14 +388,22 @@ makeDecision(float answer, attack_setup *as)
 runAttack(bucket *userList, attack_setup *as)
 {
   int confidence;   // between 0 and 100 percent
-  int i, numSamples;
+  int i, numSamples, lastBlock, startBlock=0;
+  int worst_case_blocks;
   float answer;
+  blocks *block_array = NULL;
   
   initDefenseStats();
   initAttackStats(as->numSamples, as);
   rightGuesses = 0;
   notSure = 0;
   wrongGuesses = 0;
+  if (as->attack == MtM_ATTACK) {
+    // define all needed blocks in advance
+    worst_case_blocks = as->numBaseBlocks + as->numExtraBlocks +
+                        as->maxLeftBuckets + as->maxRightBuckets - 1;
+    block_array = defineBlocks(numSamples, worst_case_blocks, &lastBlock);
+  }
   for (i = 0; i < as->numRounds; i++) {
     initDefense(10000);
     if (as->attack == OtO_ATTACK) {
@@ -401,6 +414,11 @@ runAttack(bucket *userList, attack_setup *as)
       answer = oneMtOattack(as->numSamples, userList, as);
       makeDecision(answer, as);
     }
+    else if (as->attack == MtM_ATTACK) {
+      answer = oneMtMattack(as->numSamples, userList, as, block_array, 
+                                                                lastBlock);
+      makeDecision(answer, as);
+    }
     endDefense();
     if (attackRoundNum == as->numRounds) {
       printf("runAttack(): bad attackRoundNum %d\n", attackRoundNum);
@@ -408,6 +426,7 @@ runAttack(bucket *userList, attack_setup *as)
     }
     diffAttackDiffs[attackRoundNum++] = answer;
   }
+  if (block_array) {free(block_array);}
   computeAttackStats(as->numSamples, as);
   computeDefenseStats(as->numRounds, as);
 }
