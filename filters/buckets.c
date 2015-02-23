@@ -583,40 +583,6 @@ initCluster(mtm_cluster *mc)
   }
 }
 
-defineZigZagCluster(mtm_cluster *mc, int sampleNum, attack_setup *as)
-{
-  int first_bn;
-  int lbn, rbn;    // left and right block number
-  int lbi=1, rbi=0;  // left and right bucket index
-  int i;
-
-  initCluster(mc);
-  mc->numBuckets[LEFT] = as->mtmNumLeftBuckets;
-  mc->numBuckets[RIGHT] = as->mtmNumRightBuckets;
-  // note numLeft and numRight are identical here
-  first_bn = getFirstBlockNum(sampleNum, as);
-  lbn = first_bn;
-  rbn = lbn;
-  // define initial left bucket
-  mc->bucket[LEFT][0].blocks[0] = lbn++;
-  mc->bucket[LEFT][0].numBlocks = 1;
-  // define remaining left buckets
-  for (i = 1; i < mc->numBuckets[LEFT]; i++) {
-    mc->bucket[LEFT][i].blocks[0] = lbn++;
-    mc->bucket[LEFT][i].blocks[1] = lbn++;
-    mc->bucket[LEFT][i].numBlocks = 2;
-  }
-  // define all but final right buckets
-  for (i = 0; i < (mc->numBuckets[RIGHT] - 1); i++) {
-    mc->bucket[RIGHT][i].blocks[0] = rbn++;
-    mc->bucket[RIGHT][i].blocks[1] = rbn++;
-    mc->bucket[RIGHT][i].numBlocks = 2;
-  }
-  // define final right bucket
-  mc->bucket[RIGHT][i].blocks[0] = rbn;
-  mc->bucket[RIGHT][i].numBlocks = 1;
-}
-
 int
 blockIsAlreadyInBucket(int block, mtm_bucket *mb)
 {
@@ -768,7 +734,7 @@ fullClusterDefined(mtm_cluster *mc, int sampleNum, attack_setup *as)
  * (can fail because it is a generally random process, which
  *  may not find a solution)
  */
-defineFullCluster(mtm_cluster *mc, int sampleNum, attack_setup *as)
+defineCluster(mtm_cluster *mc, int sampleNum, attack_setup *as)
 {
   int i; 
 
@@ -779,16 +745,6 @@ defineFullCluster(mtm_cluster *mc, int sampleNum, attack_setup *as)
     }
   }
   return(0);
-}
-
-defineCluster(mtm_cluster *mc, int sampleNum, attack_setup *as)
-{
-  if (as->mtmType == ZIG_ZAG) {
-    defineZigZagCluster(mc, sampleNum, as);
-  }
-  else if (as->mtmType == FULL_CLUSTER) {
-    defineFullCluster(mc, sampleNum, as);
-  }
 }
 
 bucket *
@@ -960,7 +916,7 @@ makeOneChange(mtm_cluster *mc)
   }
 }
 
-test_fullClusterDefined() 
+test_defineCluster() 
 {
   mtm_cluster mc;
   attack_setup as;
@@ -976,58 +932,58 @@ test_fullClusterDefined()
                              (as.mtmNumBaseBlocks + as.mtmNumExtraBlocks));
   sn = 0;
 
-  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 100; goto fail;}
+  if (defineCluster(&mc, sn, &as) != 1) {fn = 100; goto fail;}
   makeOneChange(&mc);
   if ((ret = checkClusterProperties(&mc)) == 0) {fn = 200+ret; goto fail;}
 
   sn = 2;
-  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 101; goto fail;}
+  if (defineCluster(&mc, sn, &as) != 1) {fn = 101; goto fail;}
   makeOneChange(&mc);
   if ((ret = checkClusterProperties(&mc)) == 0) {fn = 210+ret; goto fail;}
 
   sn = 0;
   as.mtmNumBaseBlocks = 3;
-  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 102; goto fail;}
+  if (defineCluster(&mc, sn, &as) != 1) {fn = 102; goto fail;}
   makeOneChange(&mc);
   if ((ret = checkClusterProperties(&mc)) == 0) {fn = 220+ret; goto fail;}
   
   as.mtmNumBaseBlocks = 5;
   as.mtmNumLeftBuckets = 3;
   as.mtmNumRightBuckets = 3;
-  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 103; goto fail;}
+  if (defineCluster(&mc, sn, &as) != 1) {fn = 103; goto fail;}
   makeOneChange(&mc);
   if ((ret = checkClusterProperties(&mc)) == 0) {fn = 230+ret; goto fail;}
   
   as.mtmNumBaseBlocks = 4;
   as.mtmNumLeftBuckets = 3;
   as.mtmNumRightBuckets = 3;
-  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 104; goto fail;}
+  if (defineCluster(&mc, sn, &as) != 1) {fn = 104; goto fail;}
   makeOneChange(&mc);
   if ((ret = checkClusterProperties(&mc)) == 0) {fn = 240+ret; goto fail;}
   
   as.mtmNumBaseBlocks = 3;
   as.mtmNumLeftBuckets = 3;
   as.mtmNumRightBuckets = 3;
-  if (defineFullCluster(&mc, sn, &as) == 1) {fn = 105; goto fail;}
+  if (defineCluster(&mc, sn, &as) == 1) {fn = 105; goto fail;}
   
   as.mtmNumBaseBlocks = 3;
   as.mtmNumLeftBuckets = 2;
   as.mtmNumRightBuckets = 2;
-  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 106; goto fail;}
+  if (defineCluster(&mc, sn, &as) != 1) {fn = 106; goto fail;}
   makeOneChange(&mc);
   if ((ret = checkClusterProperties(&mc)) == 0) {fn = 250+ret; goto fail;}
 
   as.mtmNumBaseBlocks = 5;
   as.mtmNumLeftBuckets = 1;
   as.mtmNumRightBuckets = 5;
-  if (defineFullCluster(&mc, sn, &as) != 1) {fn = 107; goto fail;}
+  if (defineCluster(&mc, sn, &as) != 1) {fn = 107; goto fail;}
 
   for (i = 0; i < 10000; i++) {
     as.mtmNumLeftBuckets = getRandInteger(1,5);
     as.mtmNumRightBuckets = getRandInteger(2,5);
     as.mtmNumBaseBlocks = as.mtmNumLeftBuckets + as.mtmNumRightBuckets - 1
                           + getRandInteger(0,3);
-    if (defineFullCluster(&mc, sn, &as) != 1) {
+    if (defineCluster(&mc, sn, &as) != 1) {
       fn = 10000+i; 
       printf("Failed with left %d, right %d, base %d\n",
             as.mtmNumLeftBuckets, as.mtmNumRightBuckets, as.mtmNumBaseBlocks);
@@ -1046,84 +1002,6 @@ fail:
   printMtmCluster(&mc);
   printf("test_fullClusterDefined() FAIL %d\n", fn);
 }
-
-test_defineZigZagCluster()
-{
-  mtm_cluster mc;
-  int retval;
-  attack_setup as;
-  int numSamples, sn, fn, nb;
-  blocks *block_array;
-
-  numSamples = 20;
-  as.mtmNumLeftBuckets = 2;
-  as.mtmNumRightBuckets = 2;
-  as.mtmNumBaseBlocks = (as.mtmNumLeftBuckets * 2) - 1;
-  as.mtmNumExtraBlocks = 0;
-  block_array = defineBlocks(numSamples, 
-                             (as.mtmNumBaseBlocks + as.mtmNumExtraBlocks));
-  sn = 0;
-  nb = as.mtmNumBaseBlocks + as.mtmNumExtraBlocks;
-  defineZigZagCluster(&mc, sn, &as);
-  if (mc.numBuckets[LEFT] != 2) {fn = 100; goto fail;}
-  if (mc.numBuckets[RIGHT] != 2) {fn = 101; goto fail;}
-  if (mc.bucket[LEFT][0].numBlocks != 1) {fn = 102; goto fail;}
-  if (mc.bucket[LEFT][0].blocks[0] != (nb*sn)) {fn = 103; goto fail;}
-  if (mc.bucket[LEFT][1].numBlocks != 2) {fn = 104; goto fail;}
-  if (mc.bucket[LEFT][1].blocks[0] != (nb*sn)+1) {fn = 105; goto fail;}
-  if (mc.bucket[LEFT][1].blocks[1] != (nb*sn)+2) {fn = 106; goto fail;}
-  if (mc.bucket[RIGHT][0].numBlocks != 2) {fn = 107; goto fail;}
-  if (mc.bucket[RIGHT][0].blocks[0] != (nb*sn)) {fn = 108; goto fail;}
-  if (mc.bucket[RIGHT][0].blocks[1] != (nb*sn)+1) {fn = 109; goto fail;}
-  if (mc.bucket[RIGHT][1].numBlocks != 1) {fn = 110; goto fail;}
-  if (mc.bucket[RIGHT][1].blocks[0] != (nb*sn)+2) {fn = 111; goto fail;}
-  if ((retval = checkClusterProperties(&mc)) != 0) {fn = 120+retval; goto fail;}
-  // make cluster bad, and check again
-  mc.bucket[RIGHT][1].blocks[0] = (nb*sn)+4;
-  if ((retval = checkClusterProperties(&mc)) == 0) {fn = 130+retval; goto fail;}
-  
-  free(block_array);
-
-  as.mtmNumLeftBuckets = 3;
-  as.mtmNumRightBuckets = 3;
-  as.mtmNumBaseBlocks = (as.mtmNumLeftBuckets * 2) - 1;
-  block_array = defineBlocks(numSamples, 
-                             (as.mtmNumBaseBlocks + as.mtmNumExtraBlocks));
-  sn = 2;
-  nb = as.mtmNumBaseBlocks + as.mtmNumExtraBlocks;
-  defineZigZagCluster(&mc, sn, &as);
-  if (mc.numBuckets[LEFT] != 3) {fn = 200; goto fail;}
-  if (mc.numBuckets[RIGHT] != 3) {fn = 201; goto fail;}
-  if (mc.bucket[LEFT][0].numBlocks != 1) {fn = 202; goto fail;}
-  if (mc.bucket[LEFT][0].blocks[0] != (nb*sn)) {fn = 203; goto fail;}
-  if (mc.bucket[LEFT][1].numBlocks != 2) {fn = 204; goto fail;}
-  if (mc.bucket[LEFT][1].blocks[0] != (nb*sn)+1) {fn = 205; goto fail;}
-  if (mc.bucket[LEFT][1].blocks[1] != (nb*sn)+2) {fn = 206; goto fail;}
-  if (mc.bucket[LEFT][2].numBlocks != 2) {fn = 212; goto fail;}
-  if (mc.bucket[LEFT][2].blocks[0] != (nb*sn)+3) {fn = 213; goto fail;}
-  if (mc.bucket[LEFT][2].blocks[1] != (nb*sn)+4) {fn = 214; goto fail;}
-  if (mc.bucket[RIGHT][0].numBlocks != 2) {fn = 207; goto fail;}
-  if (mc.bucket[RIGHT][0].blocks[0] != (nb*sn)) {fn = 208; goto fail;}
-  if (mc.bucket[RIGHT][0].blocks[1] != (nb*sn)+1) {fn = 209; goto fail;}
-  if (mc.bucket[RIGHT][1].numBlocks != 2) {fn = 215; goto fail;}
-  if (mc.bucket[RIGHT][1].blocks[0] != (nb*sn)+2) {fn = 216; goto fail;}
-  if (mc.bucket[RIGHT][1].blocks[1] != (nb*sn)+3) {fn = 217; goto fail;}
-  if (mc.bucket[RIGHT][2].numBlocks != 1) {fn = 210; goto fail;}
-  if (mc.bucket[RIGHT][2].blocks[0] != (nb*sn)+4) {fn = 211; goto fail;}
-  if ((retval = checkClusterProperties(&mc)) != 0) {fn = 220+retval; goto fail;}
-  // put two identical blocks in same bucket
-  mc.bucket[RIGHT][1].blocks[1] = (nb*sn)+2;
-  if ((retval = checkClusterProperties(&mc)) == 0) {fn = 230+retval; goto fail;}
-
-  printf("test_defineZigZigCluster() passed\n");
-  printMtmCluster(&mc);
-  return;
-fail:
-  printf("test_defineZigZigCluster() FAIL %d\n", fn);
-  printMtmCluster(&mc);
-}
-
-
 
 test_defineBlocks()
 {

@@ -162,6 +162,7 @@ oneMtMattack(int numSamples, bucket *userList, attack_setup *as)
 
   // if zigzag, only the number of buckets needs to be defined.  Here
   // we set mtmNumBaseBlocks according to number of buckets.
+// zzzz
   if (as->mtmType == ZIG_ZAG) {
     // need to set base blocks based on desired number of buckets per side
     as->mtmNumRightBuckets = as->mtmNumLeftBuckets;
