@@ -37,11 +37,6 @@
 #define VICTIM_IN_ONE_CHILD 1
 #define VICTIM_IN_ALL_CHILDREN 2
 
-// For MtM, the type of attack (mtmType)
-#define NUM_MTM_TYPES 2
-#define ZIG_ZAG 0
-#define FULL_CLUSTER 1
-
 typedef struct attack_setup_t {
   int attack;
   char *attack_str[NUM_ATTACKS];
@@ -55,14 +50,15 @@ typedef struct attack_setup_t {
   char *location_str[NUM_VICTIM_LOC];
   int location;
   char *attribute_str[NUM_ATTRIBUTES];
-  int mtmType;
-  char *mtmType_str[NUM_MTM_TYPES];
-  int mtmNumBaseBlocks;    // number of blocks from which to build attack
-                            // don't define if zig zag
-  int mtmNumExtraBlocks;   // number of extra blocks on each side
-  int mtmNumLeftBuckets;    // number of buckets on the "left" of cluster
-  int mtmNumRightBuckets;    // number of buckets on the "right" of cluster
-                            // don't define if zig zag
+  int numBaseBlocks;    // number of blocks *beyond the minimum* 
+                           // from which to build attack
+  int numExtraBlocks;   // number of extra blocks on each side
+  int minLeftBuckets;   // min buckets on left side
+  int maxLeftBuckets;   // max buckets on left side
+  int numLeftBuckets;    // derived from min and max
+  int minRightBuckets;   // min buckets on right side
+  int maxRightBuckets;    // max buckets on right side 
+  int numRightBuckets;    // derived from min and max
   int numChildren;   // for OtM attack
   int chaffMax;
   int chaffMin;
@@ -80,7 +76,7 @@ typedef struct blocks_t {
   int childNum;
 } blocks;
 
-#define MAX_NUM_BLOCKS 16
+#define MAX_NUM_BLOCKS 16    // base and extra
 #define MAX_NUM_BUCKETS_PER_SIDE 16
 #define NO_BLOCK 0x7fffffff;
 

@@ -5,7 +5,7 @@
 #include <search.h>
 #include "./filters.h"
 #include "./hightouch.h"
-#include "./defense.h"
+#include "./attacks.h"
 
 // externs needed to keep compiler from warning
 extern bucket *makeBucket(int arg1);
@@ -247,6 +247,7 @@ checkAllChildCombinations(bucket *pbp,     // parent
 // matching buckets.  Because of added noise, it is not critical
 // that we catch all near matches.
 #define NEAR_MATCH_THRESHOLD 90
+#define WEAK_MATCH_THRESHOLD 30
 #define LOW_COUNT_SOFT_THRESHOLD 5
 #define LOW_COUNT_HARD_THRESHOLD 1
 #define LOW_COUNT_SD 1
@@ -265,11 +266,10 @@ checkAllChildCombinations(bucket *pbp,     // parent
 int
 putBucketDefend(bucket *bp, attack_setup *as) 
 {
+  LIST_HEAD(listhead, bucket_t) head;
   int i, j, overlap;
   compare c;
-  bucket *fbp;	// final bucket
-  bucket *bp1;
-  bucket *temp;
+  bucket *bp1, *lbp, *rbp;
   int childAdded;
   int adjustment=0;
 
@@ -285,12 +285,21 @@ putBucketDefend(bucket *bp, attack_setup *as)
     exit(1);
   }
 
+  if (as->defense >= MtM_DEFENSE) {
+    // initialize list of medium overlap buckets
+    LIST_INIT(&head);
+  }
+
   childAdded = 0;
   for (i = 0; i < j; i++) {
     numComparisons++;
     bp1 = storedFilters[i];
     compareFullFilters(bp1, bp, &c);
     overlap = (int) ((float) c.overlap * (float) 1.5625);
+    if ((as->defense >= MtM_DEFENSE) && (overlap > WEAK_MATCH_THRESHOLD)) {
+      // this is a candidate for an MtM attack.  store for later.
+      LIST_INSERT_HEAD(&head, bp1, mtm_list);
+    }
     if (overlap > NEAR_MATCH_THRESHOLD) {
       // filters suggest that there is a lot of overlap
       numPastDigest++;
@@ -318,9 +327,26 @@ putBucketDefend(bucket *bp, attack_setup *as)
       }
     }
   }
-  if (as->defense > OtO_DEFENSE) {
+  if (as->defense >= MtO_DEFENSE) {
     if (childAdded) {
       adjustment += checkAllChildCombinations(bp, NULL);
+    }
+  }
+  if (as->defense >= MtM_DEFENSE) {
+    // go through each pair of overlapping buckets, and see if an MtM
+    // attack scenario exists (this I admit is a bit nasty.  It means
+    // that we really need to store the full buckets, at least for a
+    // while, and process them.)
+    for (lbp = head.lh_first; lbp != NULL; lbp = lbp->mtm_list.le_next) {
+      for (rbp = head.lh_first; rbp != NULL; rbp = rbp->mtm_list.le_next) {
+        if (rbp == lbp) {continue;}
+// zzzz
+      }
+    }
+    // clean out the linked list
+    while (head.lh_first != NULL) {
+      printf("%p\n", head.lh_first);
+      LIST_REMOVE(head.lh_first, mtm_list);
     }
   }
 
