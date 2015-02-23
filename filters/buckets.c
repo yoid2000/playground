@@ -559,6 +559,40 @@ checkClusterProperties(mtm_cluster *mc)
   return(NO_ERROR);
 }
 
+/*
+ *  The added extra block must not already be in the cluster
+ */
+addOneExtraBlock(mtm_cluster *mc, int block)
+{
+  int b, a, nb;
+
+  b = getRandInteger(0, mc->numBuckets[LEFT]-1);   // pick a random bucket
+  nb = mc->bucket[LEFT][b].numBlocks;
+  mc->bucket[LEFT][b].blocks[nb] = block;
+  mc->bucket[LEFT][b].numBlocks++;
+  b = getRandInteger(0, mc->numBuckets[RIGHT]-1);   // pick a random bucket
+  nb = mc->bucket[RIGHT][b].numBlocks;
+  mc->bucket[RIGHT][b].blocks[nb] = block;
+  mc->bucket[RIGHT][b].numBlocks++;
+}
+
+/*
+ *  This routine adds each unique extra block once.
+ */
+addExtraBlocks(mtm_cluster *mc, int numBlocks, int block)
+{
+  int i;
+
+  for (i = 0; i < numBlocks; i++) {
+    addOneExtraBlock(mc, block++);
+    if (checkClusterProperties(mc) != NO_ERROR) {
+      printf("addExtraBlocks() ERROR, block %d\n", block);
+      printMtmCluster(mc);
+      exit(1);
+    }
+  }
+}
+
 initMtmBucket(mtm_bucket *mb)
 {
   int j;
@@ -651,7 +685,6 @@ placeBlock(int s, mtm_cluster *mc, int block)
   int buckets[MAX_NUM_BUCKETS_PER_SIDE];
   int i;
 
-  // find the minimum sized bucket that doesn't already have the block
   for (i = 0; i < mc->numBuckets[s]; i++) {
     if (mc->bucket[s][i].numBlocks == 0) {
       // if bucket is empty, just put the block here
@@ -666,14 +699,15 @@ placeBlock(int s, mtm_cluster *mc, int block)
     else if (mc->bucket[s][i].numBlocks < min) {
       min = mc->bucket[s][i].numBlocks;
       numMin = 0;
-      buckets[numMin++] = i;   // remember min bucket
+      buckets[numMin++] = i;   // remember min sized bucket
     }
     else if (mc->bucket[s][i].numBlocks == min) {
-      buckets[numMin++] = i;    // remember min bucket
+      buckets[numMin++] = i;    // remember min sized bucket
     }
   }
   if (selectedBucket == MAX_NUM_BUCKETS_PER_SIDE+1) {
     if (numMin == 0) {
+      // never found a valid bucket at all
       return(0);
     }
     selectedBucket = buckets[getRandInteger(0, numMin-1)];
@@ -726,6 +760,7 @@ fullClusterDefined(mtm_cluster *mc, int sampleNum, attack_setup *as)
       }
     }
   }
+  addExtraBlocks(mc, as->mtmNumExtraBlocks, last_bn);
   return(1);
 }
 
@@ -983,6 +1018,7 @@ test_defineCluster()
     as.mtmNumRightBuckets = getRandInteger(2,5);
     as.mtmNumBaseBlocks = as.mtmNumLeftBuckets + as.mtmNumRightBuckets - 1
                           + getRandInteger(0,3);
+    as.mtmNumExtraBlocks = getRandInteger(0,3);
     if (defineCluster(&mc, sn, &as) != 1) {
       fn = 10000+i; 
       printf("Failed with left %d, right %d, base %d\n",
