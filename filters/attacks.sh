@@ -1,9 +1,27 @@
 #!/bin/bash
 
 DIR=$(pwd)
-OUTDIR="/home/francis/attacks/"
+OUTDIR="temp"
 
-./runAttacks -a 1 -d 3 -o 0 -l 0 -c 10 -m 0 -x 0 -r 500 -s 10 -t 0 $OUTDIR
+A_MTO=1
+A_MTM=2
+D_OTO=1
+D_MTO=2
+VFIRST=0
+ALL_CHILD=2
+ALL_LEFT=3
+ALL_RIGHT=4
+ATT_YES=0
+ATT_NO=1
+ROUNDS="-r"
+
+for s in 40
+do
+# ./runAttacks -a $A_MTO -d $D_OTO -o $VFIRST -l $ALL_CHILD -c 2 -m 0 -x 0 $ROUNDS 80 -s $s -t $ATT_NO -B 0 -E 0 -W 2 -X 2 -Y 2 -Z 2 -e 1 $OUTDIR &
+sleep 1
+ ./runAttacks -a $A_MTM -d $D_MTO -o $VFIRST -l $ALL_LEFT -c 2 -m 0 -x 0 $ROUNDS 80 -s $s -t $ATT_YES -B 0 -E 0 -W 5 -X 5 -Y 1 -Z 1 -e 1 $OUTDIR 
+ sleep 1
+done
 exit
 
 for s in 5 10 20 40
@@ -18,8 +36,7 @@ do
   done
 done
 
-#
-#Usage: ./runAttacks -a attack -d defense -o victim_order -l victim_location -t victim_attribute -c num_children -m min_chaff -x max_chaff -r num_rounds -s num_samples, -e seed
+#Usage: ./runAttacks -a attack -d defense -o victim_order -l victim_location -t victim_attribute -c num_children -m min_chaff -x max_chaff -r num_rounds -s num_samples -e seed -B num_base_blocks_past_min -E num_extra_blocks -W min_left -X max_left -Y min_right -Z max_right <directory>
 #      attack values:
 #          0 = OtO attack
 #          1 = MtO attack
@@ -32,11 +49,13 @@ done
 #     victim_order values:
 #          0 = victim first
 #          1 = victim last
-#          2 = victim random
 #     victim_location values:
 #          0 = victim in parent
 #          1 = victim in one child
 #          2 = victim in all children
+#          3 = victim in all left
+#          4 = victim in all right
+#          5 = victim in one right
 #     victim_attribute values:
 #          0 = victim has attribute
 #          1 = victim does not have attribute
@@ -45,3 +64,9 @@ done
 #     num_rounds (for experiment statistical significance) > 0
 #     num_samples (for attack statistical significance) > 0
 #     seed:  any integer
+#     num_base_blocks_past_min >= 0
+#     num_extra_blocks >= 0
+#     min_left >= 1
+#     max_left >= min_left
+#     min_right >= 1
+#     max_right >= min_right

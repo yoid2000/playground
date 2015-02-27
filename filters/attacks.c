@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
+#include <fenv.h>
 #include "./filters.h"
 #include "./utilities.h"
 #include "./attacks.h"
@@ -22,7 +23,6 @@ extern bucket *makeSegregatedBucketFromList(int mask,
                              bucket *userList, 
                              int userListSize);
 extern blocks *defineBlocks(int samples, int blocksPerSample, int *lastBlock);
-
 
 #define USER_LIST_SIZE 0x100000  
 
@@ -50,7 +50,7 @@ getSegregateMask(int numSamples,
 
   // first compute shift value needed to shift numSamples past
   // numChildren
-  *shift = 0;
+  *shift = 1;
   *mask = 1;
   while (*mask < (unsigned int) 0xffff) {
     if (*mask > numChildren) {
@@ -90,11 +90,15 @@ initAttackStats(int numSamples, attack_setup *as)
   for (i = 0; i < as->numRounds; i++) {
     diffAttackDiffs[i] = 0;
   }
-  if (as->numChildren == 0) {
+  if (as->attack == OtO_ATTACK) {
     accSize = numSamples * as->numRounds * 2;
   }
-  else {
+  else if (as->attack == MtO_ATTACK) {
     accSize = numSamples * as->numRounds * (as->numChildren + 1);
+  }
+  else if (as->attack == MtM_ATTACK) {
+    accSize = numSamples * as->numRounds * 
+                                (as->maxLeftBuckets + as->maxRightBuckets);
   }
   accuracy = (int *) calloc(accSize, sizeof (int *));
   accIndex = 0;
@@ -105,12 +109,14 @@ computeAttackStats(int numSamples, attack_setup *as) {
 
   getStatsInt(&accS, accuracy, accIndex);
   getStatsFloat(&diffS, diffAttackDiffs, attackRoundNum);
-  fprintf(as->f, "\n%d samples, right %d%%, error: av %.2f, sd = %.2f, min = %.2f, max = %.2f\n",
+  fprintf(as->f, "\n%d samples, right %d%%, answers: av %.2f, sd = %.2f, error: av = %.2f, sd = %.2f\n",
          numSamples,
          (int)(((float) rightGuesses / (float) as->numRounds) * 100.0),
-         accS.av, accS.sd, accS.min, accS.max);
+         diffS.av, diffS.sd, accS.av, accS.sd);
   fprintf(as->f, "            answers: av %.2f, sd = %.2f, min = %.2f, max = %.2f\n",
          diffS.av, diffS.sd, diffS.min, diffS.max);
+  fprintf(as->f, "            error: av %.2f, sd = %.2f, min = %.2f, max = %.2f\n",
+         accS.av, accS.sd, accS.min, accS.max);
   
   free(accuracy);
 }
@@ -152,16 +158,33 @@ makeChaffBuckets(bucket *userList, attack_setup *as) {
   }
 }
 
+int
+worstCaseBlocks(attack_setup *as)
+{
+  return(as->numBaseBlocks + as->numExtraBlocks +
+                        as->maxLeftBuckets + as->maxRightBuckets - 1);
+}
+
 float
 oneMtMattack(int numSamples, 
              bucket *userList, 
-             attack_setup *as, 
-             blocks *block_array,
-             int lastBlock)
+             attack_setup *as)
 {
-  int i, baseBlocks, startBlock=0;
-  bucket *vbp;  // victim
+  int i, j, blockIndex=0;
+  int baseBlocks;
+  int noisyCount;
+  int mask, max_bsize, shift;
+  bucket *temp, *vbp;  // victim
   mtm_cluster mc;
+  bucket **bbp;   // temporary buckets for each block
+  bucket *bp[2][MAX_NUM_BUCKETS_PER_SIDE];    // actual buckets
+  int s, b;     // side and bucket for bp[][]
+  blocks *block_array = NULL;
+  int block, lastBlock, first_s;
+  int sums[2];
+  float av1, av2;
+
+  sums[LEFT] = 0; sums[RIGHT] = 0;
 
   if ((as->maxLeftBuckets > MAX_NUM_BUCKETS_PER_SIDE) ||
       (as->maxRightBuckets > MAX_NUM_BUCKETS_PER_SIDE)) {
@@ -170,9 +193,15 @@ oneMtMattack(int numSamples,
     exit(1);
   }
 
+  block_array = defineBlocks(numSamples, worstCaseBlocks(as), &lastBlock);
+  bbp = (bucket **) calloc(worstCaseBlocks(as), sizeof(bucket *));
+
   // make victim
   vbp = makeRandomBucketFromList(1, userList);
+  getSegregateMask(numSamples, worstCaseBlocks(as),
+                                           &mask, &max_bsize, &shift);
   for (i = 0; i < numSamples; i++) {
+    makeChaffBuckets(userList, as);
     as->numLeftBuckets = getRandInteger(as->minLeftBuckets, 
                                                   as->maxLeftBuckets);
     as->numRightBuckets = getRandInteger(as->minRightBuckets, 
@@ -180,8 +209,10 @@ oneMtMattack(int numSamples,
     baseBlocks = as->numBaseBlocks + 
                  as->numLeftBuckets + as->numRightBuckets - 1;
 
-    if ((startBlock + baseBlocks) >= lastBlock) {
-      printf("oneMtMattack ERROR2\n");
+    if ((blockIndex + baseBlocks) > lastBlock) {
+      printf("oneMtMattack ERROR2 %d, %d, %d, %d\n", i, blockIndex, baseBlocks,
+                                                 lastBlock);
+      printAttackSetup(as);
       exit(1);
     }
 
@@ -191,11 +222,99 @@ oneMtMattack(int numSamples,
       exit(1);
     }
 
-    if (defineCluster(&mc, startBlock, as) == 0) {
-// zzzz
+    if (defineCluster(&mc, baseBlocks, as) == 0) {
+      printf("oneMtMattack ERROR4 %d\n", baseBlocks);
+      printAttackSetup(as);
+      printMtmCluster(&mc);
+      exit(1);
     }
-    startBlock += baseBlocks + as->numExtraBlocks;
+    // build all the per-block user lists
+    for (j = 0; j < worstCaseBlocks(as); j++) {
+      bbp[j] = makeSegregatedBucketFromList(mask, shift, max_bsize, 
+                         block_array[blockIndex].sampleNum, 
+                         block_array[blockIndex].childNum, 
+                         *(vbp->list), userList, USER_LIST_SIZE);
+      blockIndex++;
+    }
+
+    // build the buckets from the per-block user lists
+    for (s = 0; s < 2; s++) {
+      for (b = 0; b < mc.numBuckets[s]; b++) {
+        mc.bucket[s][b].bp = makeBucket(0);
+        for (j = 0; j < mc.bucket[s][b].numBlocks; j++) {
+          block = mc.bucket[s][b].blocks[j];
+          temp = combineBuckets(bbp[block], mc.bucket[s][b].bp);
+          freeBucket(mc.bucket[s][b].bp); mc.bucket[s][b].bp = temp;
+        }
+      }
+    }
+
+    // free all of the per-block user lists
+    for (j = 0; j < worstCaseBlocks(as); j++) {
+      freeBucket(bbp[j]);
+    }
+
+    // ok, now we have a user-list bucket for each bucket in the
+    // cluster.  We need to add the victim in the right place(s),
+    // and set whether right or left will be submitted first
+    if (as->attribute == VICTIM_ATTRIBUTE_YES) {
+      if (as->location == VICTIM_IN_ONE_RIGHT) {
+        if (as->order == VICTIM_FIRST) {
+          first_s = RIGHT;
+          b = 0;
+        }
+        else {
+          first_s = LEFT;
+          b = mc.numBuckets[RIGHT] - 1;
+        }
+        temp = combineBuckets(mc.bucket[RIGHT][b].bp, vbp);
+        freeBucket(mc.bucket[RIGHT][b].bp); mc.bucket[RIGHT][b].bp = temp;
+      }
+      else {
+        first_s = RIGHT;
+        if (as->location == VICTIM_IN_ALL_RIGHT) { 
+          s = RIGHT; 
+          first_s = RIGHT;    // assumes order = VICTIM_FIRST
+        }
+        else if (as->location == VICTIM_IN_ALL_LEFT) { 
+          s = LEFT; 
+          first_s = LEFT;    // assumes order = VICTIM_FIRST
+        }
+        if (as->order == VICTIM_LAST) {
+          // assumption wrong, so swap sides
+          first_s = (first_s==RIGHT)?LEFT:RIGHT;
+        }
+        for (b = 0; b < mc.numBuckets[s]; b++) {
+          temp = combineBuckets(mc.bucket[s][b].bp, vbp);
+          freeBucket(mc.bucket[s][b].bp); mc.bucket[s][b].bp = temp;
+        }
+      }
+    }
+    // and finally feed them to the defense in the appropriate order.
+    if (accIndex >= accSize) {
+      printf("oneMtMAttack() accIndex %d exceeds %d\n", accIndex, accSize);
+      exit(1);
+    }
+    s = first_s;
+    for (b = 0; b < mc.numBuckets[s]; b++) {
+      noisyCount = putBucket(mc.bucket[s][b].bp, as);
+      accuracy[accIndex++] = (mc.bucket[s][b].bp)->bsize - noisyCount;
+      sums[s] += noisyCount;
+    }
+    s = (s==RIGHT)?LEFT:RIGHT;
+    for (b = 0; b < mc.numBuckets[s]; b++) {
+      noisyCount = putBucket(mc.bucket[s][b].bp, as);
+      accuracy[accIndex++] = (mc.bucket[s][b].bp)->bsize - noisyCount;
+      sums[s] += noisyCount;
+    }
   }
+  // report
+  free(bbp);
+  free(block_array);
+  freeBucket(vbp);
+  av1 = (float)((float) sums[LEFT] / (float) numSamples);
+  av2 = (float)((float) sums[RIGHT] / (float) numSamples);
+  return(av2 - av1);
 }
 
 float
@@ -211,14 +330,14 @@ oneMtOattack(int numSamples, bucket *userList, attack_setup *as)
   cbp = (bucket **) calloc(as->numChildren, sizeof(bucket *));
 
   vbp = makeRandomBucketFromList(1, userList);
+  // the mask and max_bsize here ensure that I get, on one hand,
+  // somewhat large buckets, but on the other, not more than
+  // the userList can handle
+  getSegregateMask(numSamples, as->numChildren, &mask, &max_bsize, &shift);
   for (i = 0; i < numSamples; i++){
     makeChaffBuckets(userList, as);
     pbp = makeBucket(0);
     for (j = 0; j < as->numChildren; j++) {
-      // the mask and max_bsize here ensure that I get, on one hand,
-      // somewhat large buckets, but on the other, not more than
-      // the userList can handle
-      getSegregateMask(numSamples, as->numChildren, &mask, &max_bsize, &shift);
       cbp[j] = makeSegregatedBucketFromList(mask, shift, max_bsize, i, j,
                          *(vbp->list), userList, USER_LIST_SIZE);
       temp = combineBuckets(cbp[j], pbp);
@@ -277,6 +396,7 @@ oneMtOattack(int numSamples, bucket *userList, attack_setup *as)
     }
   }
 
+  free(cbp);
   freeBucket(vbp);
   av1 = (float)((float) sum1 / (float) numSamples);
   av2 = (float)((float) sum2 / (float) numSamples);
@@ -360,12 +480,37 @@ makeDecision(float answer, attack_setup *as)
         case VICTIM_ATTRIBUTE_YES:
           switch(as->location) {
             case VICTIM_IN_PARENT:
-              if (answer <= 0.5) { rightGuesses++; }
+              if (answer <= -0.5) { rightGuesses++; }
               else { wrongGuesses++; }
               break;
             case VICTIM_IN_ALL_CHILDREN:
             case VICTIM_IN_ONE_CHILD:
-              if (answer >= -0.5) { rightGuesses++; }
+              if (answer >= 0.5) { rightGuesses++; }
+              else { wrongGuesses++; }
+              break;
+            default:
+              printf("makeDecision() should not get here 6\n"); exit(1);
+          }
+          break;
+        case VICTIM_ATTRIBUTE_NO:
+          if ((answer < 0.5) && (answer > -0.5)) { rightGuesses++; }
+          else { wrongGuesses++; }
+          break;
+        default:
+          printf("makeDecision() should not get here 3\n"); exit(1);
+      }
+      break;
+    case MtM_ATTACK:
+      switch(as->attribute) {
+        case VICTIM_ATTRIBUTE_YES:
+          switch(as->location) {
+            case VICTIM_IN_ALL_LEFT:
+              if (answer <= -0.5) { rightGuesses++; }
+              else { wrongGuesses++; }
+              break;
+            case VICTIM_IN_ALL_RIGHT:
+            case VICTIM_IN_ONE_RIGHT:
+              if (answer >= 0.5) { rightGuesses++; }
               else { wrongGuesses++; }
               break;
             default:
@@ -388,22 +533,14 @@ makeDecision(float answer, attack_setup *as)
 runAttack(bucket *userList, attack_setup *as)
 {
   int confidence;   // between 0 and 100 percent
-  int i, numSamples, lastBlock, startBlock=0;
-  int worst_case_blocks;
+  int i, numSamples;
   float answer;
-  blocks *block_array = NULL;
   
   initDefenseStats();
   initAttackStats(as->numSamples, as);
   rightGuesses = 0;
   notSure = 0;
   wrongGuesses = 0;
-  if (as->attack == MtM_ATTACK) {
-    // define all needed blocks in advance
-    worst_case_blocks = as->numBaseBlocks + as->numExtraBlocks +
-                        as->maxLeftBuckets + as->maxRightBuckets - 1;
-    block_array = defineBlocks(numSamples, worst_case_blocks, &lastBlock);
-  }
   for (i = 0; i < as->numRounds; i++) {
     initDefense(10000);
     if (as->attack == OtO_ATTACK) {
@@ -415,8 +552,7 @@ runAttack(bucket *userList, attack_setup *as)
       makeDecision(answer, as);
     }
     else if (as->attack == MtM_ATTACK) {
-      answer = oneMtMattack(as->numSamples, userList, as, block_array, 
-                                                                lastBlock);
+      answer = oneMtMattack(as->numSamples, userList, as);
       makeDecision(answer, as);
     }
     endDefense();
@@ -426,16 +562,44 @@ runAttack(bucket *userList, attack_setup *as)
     }
     diffAttackDiffs[attackRoundNum++] = answer;
   }
-  if (block_array) {free(block_array);}
   computeAttackStats(as->numSamples, as);
   computeDefenseStats(as->numRounds, as);
+}
+
+printAttackSetup(attack_setup *as)
+{
+
+  fprintf(as->f, "Attack: %s, %s, %s, %s, %s\n", as->attack_str[as->attack],
+                                     as->defense_str[as->defense], 
+                                     as->order_str[as->order],
+                                     as->location_str[as->location],
+                                     as->attribute_str[as->attribute]);
+  fprintf(as->f, " chaffMax %d\n", as->chaffMax);
+  fprintf(as->f, " chaffMin %d\n", as->chaffMin);
+  fprintf(as->f, " numRounds %d\n", as->numRounds);
+  fprintf(as->f, " numSamples %d\n", as->numSamples);
+
+  if (as->attack == MtM_ATTACK) {
+    fprintf(as->f, " numBaseBlocks %d\n", as->numBaseBlocks);
+    fprintf(as->f, " numExtraBlocks %d\n", as->numExtraBlocks);
+    fprintf(as->f, " minLeftBuckets %d\n", as->minLeftBuckets);
+    fprintf(as->f, " maxLeftBuckets %d\n", as->maxLeftBuckets);
+    fprintf(as->f, " minRightBuckets %d\n", as->minRightBuckets);
+    fprintf(as->f, " maxRightBuckets %d\n", as->maxRightBuckets);
+    fprintf(as->f, " numLeftBuckets %d\n", as->numLeftBuckets);
+    fprintf(as->f, " numRightBuckets %d\n", as->numRightBuckets);
+
+  }
+  if (as->attack == MtO_ATTACK) {
+    fprintf(as->f, " numChildren %d\n", as->numChildren);
+  }
 }
 
 printCommandLines(attack_setup *as)
 {
   int i;
 
-  printf("Usage: ./runAttacks -a attack -d defense -o victim_order -l victim_location -t victim_attribute -c num_children -m min_chaff -x max_chaff -r num_rounds -s num_samples, -e seed <directory>\n ");
+  printf("Usage: ./runAttacks -a attack -d defense -o victim_order -l victim_location -t victim_attribute -c num_children -m min_chaff -x max_chaff -r num_rounds -s num_samples -e seed -B num_base_blocks_past_min -E num_extra_blocks -W min_left -X max_left -Y min_right -Z max_right <directory>\n ");
   printf("     attack values:\n");
   for (i = 0; i < NUM_ATTACKS; i++) {
     printf("          %d = %s\n", i, as->attack_str[i]);
@@ -461,13 +625,20 @@ printCommandLines(attack_setup *as)
   printf("     num_rounds (for experiment statistical significance) > 0\n");
   printf("     num_samples (for attack statistical significance) > 0\n");
   printf("     seed:  any integer\n");
+  
+  printf("     num_base_blocks_past_min >= 0\n");
+  printf("     num_extra_blocks >= 0\n");
+  printf("     min_left >= 1\n");
+  printf("     max_left >= min_left\n");
+  printf("     min_right >= 1\n");
+  printf("     max_right >= min_right\n");
 }
 
 main(int argc, char *argv[])
 {
   bucket *userList;
   attack_setup as;
-  int c, seed=0;
+  int ran, c, seed=0;
   unsigned char path[378], dir[128], filename[256], temp[32];
 
   filename[0] = '\0';
@@ -478,7 +649,6 @@ main(int argc, char *argv[])
   as.defense_str[MtM_DEFENSE] = "MtM defense";
   as.order_str[VICTIM_FIRST] = "victim first"; 
   as.order_str[VICTIM_LAST] = "victim last"; 
-  as.order_str[VICTIM_RANDOM] = "victim random";
   as.attribute_str[VICTIM_ATTRIBUTE_YES] = "victim has attribute"; 
   as.attribute_str[VICTIM_ATTRIBUTE_NO] = "victim does not have attribute"; 
   as.attack_str[OtO_ATTACK] = "OtO attack"; 
@@ -489,6 +659,9 @@ main(int argc, char *argv[])
   as.location_str[VICTIM_IN_PARENT] = "victim in parent";
   as.location_str[VICTIM_IN_ONE_CHILD] = "victim in one child";
   as.location_str[VICTIM_IN_ALL_CHILDREN] = "victim in all children";
+  as.location_str[VICTIM_IN_ALL_LEFT] = "victim in all left";
+  as.location_str[VICTIM_IN_ALL_RIGHT] = "victim in all right";
+  as.location_str[VICTIM_IN_ONE_RIGHT] = "victim in one right";
 
   // set defaults
   as.attack = MtO_ATTACK;
@@ -502,11 +675,37 @@ main(int argc, char *argv[])
   as.chaffMax = 0;
   as.numRounds = 20;
   as.numSamples = 10;
+  as.numBaseBlocks = 0;
+  as.numExtraBlocks = 0;   
+  as.minLeftBuckets = 2;   
+  as.maxLeftBuckets = 2;   
+  as.minRightBuckets = 2;   
+  as.maxRightBuckets = 2;    
+  as.numLeftBuckets = 0;     // gets set later
+  as.numRightBuckets = 0;     // gets set later
 
-  while ((c = getopt (argc, argv, "a:d:o:l:t:c:m:x:r:s:e:h?")) != -1) {
+  while ((c = getopt (argc, argv, "W:X:Y:Z:E:B:a:d:o:l:t:c:m:x:r:s:e:h?")) != -1) {
     sprintf(temp, "%c%s", c, optarg);
     strcat(filename, temp);
     switch (c) {
+      case 'W':
+        as.minLeftBuckets = atoi(optarg);
+        break;
+      case 'X':
+        as.maxLeftBuckets = atoi(optarg);
+        break;
+      case 'Y':
+        as.minRightBuckets = atoi(optarg);
+        break;
+      case 'Z':
+        as.maxRightBuckets = atoi(optarg);
+        break;
+      case 'E':
+        as.numExtraBlocks = atoi(optarg);
+        break;
+      case 'B':
+        as.numBaseBlocks = atoi(optarg);
+        break;
       case 'a':
         as.attack = atoi(optarg);
         break;
@@ -554,7 +753,8 @@ main(int argc, char *argv[])
   }
   srand48((long int) seed);
 
-  sprintf(temp, ".%d", getRandInteger(1000, 9999));
+  ran = quick_hash(filename) & 0xfff;
+  sprintf(temp, ".%d", ran);
   strcat(filename, temp);
   strcat(filename, ".txt");
 
@@ -571,26 +771,17 @@ main(int argc, char *argv[])
     exit(1);
   }
 
+  fesetround(1);   // sets rounding to nearest integer
 
   // Make complete list of users used for all attacks
   userList = createHighTouchTable(USER_LIST_SIZE);
   diffAttackDiffs = (float *) calloc(as.numRounds, sizeof(float *));
 
-  if (as.attack == MtO_ATTACK) {
-    fprintf(as.f, "Attack: %s, %s, %s, %s, %s\n", as.attack_str[as.attack],
-                                     as.defense_str[as.defense], 
-                                     as.order_str[as.order],
-                                     as.location_str[as.location],
-                                     as.attribute_str[as.attribute]);
-  }
-  else {
-    fprintf(as.f, "Attack: %s, %s, %s, %s\n", as.attack_str[as.attack],
-                                     as.defense_str[as.defense], 
-                                     as.order_str[as.order],
-                                     as.attribute_str[as.attribute]);
-  }
+  printAttackSetup(&as);
+
   //test_getSegregateMask(userList); exit(1);
   runAttack(userList, &as);
+  printf("Done: %s\n", filename);
 }
 
 /************  TESTS ****************/
