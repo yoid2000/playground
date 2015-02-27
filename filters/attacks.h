@@ -10,10 +10,9 @@
 #define MtM_DEFENSE 3
 
 // Where to place victim in order of attack buckets
-#define NUM_ORDERS 3
+#define NUM_ORDERS 2
 #define VICTIM_FIRST 0
 #define VICTIM_LAST 1
-#define VICTIM_RANDOM 2
 
 // Whether or not victim has attribute
 #define NUM_ATTRIBUTES 2
@@ -31,11 +30,14 @@
 #define RANDOM_CHILDREN 0
 #define SEGREGATED_CHILDREN 1
 
-// For OtM, whether victim is in parent or one child or all children
-#define NUM_VICTIM_LOC 3
+// as->location
+#define NUM_VICTIM_LOC 6
 #define VICTIM_IN_PARENT 0
 #define VICTIM_IN_ONE_CHILD 1
 #define VICTIM_IN_ALL_CHILDREN 2
+#define VICTIM_IN_ALL_LEFT 3
+#define VICTIM_IN_ALL_RIGHT 4
+#define VICTIM_IN_ONE_RIGHT 5
 
 typedef struct attack_setup_t {
   int attack;
@@ -83,6 +85,7 @@ typedef struct blocks_t {
 typedef struct mtm_bucket_t {
   int numBlocks;
   int blocks[MAX_NUM_BLOCKS];
+  bucket *bp;	         // place-holder for built bucket
 } mtm_bucket;
 
 #define LEFT 0

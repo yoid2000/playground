@@ -47,6 +47,10 @@ int numPutBuckets;
 int numLowCount;
 int numAdjust;
 int numOtMdetect;
+float fixedNoiseBias;
+int numFixedNoise;
+float roundingBias;
+int numRounding;
 
 initDefense(int maxBuckets) {
   storedFilters = (bucket **) calloc(maxBuckets, sizeof(bucket *));
@@ -70,6 +74,10 @@ initDefenseStats()
   numCloseSize = 0;
   numSmallOverlap = 0;
   numAdjust = 0;
+  fixedNoiseBias = 0.0;
+  numFixedNoise = 0;
+  roundingBias = 0.0;
+  numRounding = 0;
 }
 
 computeDefenseStats(int numRounds, attack_setup *as)
@@ -99,6 +107,11 @@ computeDefenseStats(int numRounds, attack_setup *as)
             (int)((float)(numSmallOverlap*100)/(float) numCloseSize));
     fprintf(as->f, "Average %.2f adjusted users per checked bucket\n",
             (float)((float)numAdjust/(float) numSmallOverlap));
+    fprintf(as->f, "Biases: fixed: %.2f (%.2f, %d), rounding: %.2f (%.2f, %d)\n",
+            (float)(fixedNoiseBias/(float) numFixedNoise),
+            fixedNoiseBias, numFixedNoise,
+            (float)(roundingBias/(float) numRounding),
+            roundingBias, numRounding);
   }
 }
 
@@ -123,14 +136,25 @@ int
 computeNoisyCount(bucket *bp)
 {
   int i;
-  float noise;
+  float noise, fixedNoise=0.0, roundedNoise=0.0;
   unsigned int fix=0;
 
   noise = getNormal(0.0, 2.0);	// random noise, SD=2
-  noise += getFixedNormal(bp, 0.0, 1.5);  // fixed noise, SD=1.5
+  fixedNoise = getFixedNormal(bp, 0.0, 1.5);  // fixed noise, SD=1.5
+  // update some stats
+  fixedNoiseBias += fixedNoise;
+  numFixedNoise++;
+
+  noise += fixedNoise;
   // note: no rounding to 5 here.  I figure that it doesn't defeat any
   // attack, and makes it harder to understand what attacks work...
-  noise = roundf(noise);
+  // rather we round to the nearest integer:
+  roundedNoise = nearbyintf(noise);
+  // update more stats
+  roundingBias += noise - roundedNoise;
+  numRounding++;
+
+  noise = roundedNoise;
   return((int)(bp->bsize + noise));
 }
 
