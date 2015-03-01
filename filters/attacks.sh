@@ -15,11 +15,12 @@ ATT_YES=0
 ATT_NO=1
 ROUNDS="-r"
 
-for s in 40
+for s in 20
 do
 # ./runAttacks -a $A_MTO -d $D_OTO -o $VFIRST -l $ALL_CHILD -c 2 -m 0 -x 0 $ROUNDS 80 -s $s -t $ATT_NO -B 0 -E 0 -W 2 -X 2 -Y 2 -Z 2 -e 1 $OUTDIR &
 sleep 1
- ./runAttacks -a $A_MTM -d $D_MTO -o $VFIRST -l $ALL_LEFT -c 2 -m 0 -x 0 $ROUNDS 80 -s $s -t $ATT_YES -B 0 -E 0 -W 5 -X 5 -Y 1 -Z 1 -e 1 $OUTDIR 
+ ./runAttacks -a $A_MTM -d $D_MTO -o $VFIRST -l $ALL_RIGHT -c 2 -m 0 -x 0 $ROUNDS 40 -s $s -t $ATT_YES -B 0 -E 0 -W 1 -X 1 -Y 5 -Z 5 -e 1 $OUTDIR 
+ ./runAttacks -a $A_MTM -d $D_MTO -o $VFIRST -l $ALL_RIGHT -c 2 -m 0 -x 0 $ROUNDS 40 -s $s -t $ATT_NO -B 0 -E 0 -W 1 -X 1 -Y 5 -Z 5 -e 1 $OUTDIR 
  sleep 1
 done
 exit
