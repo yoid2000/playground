@@ -3,8 +3,6 @@
 DIR=$(pwd)
 OUTDIR="/home/francis/attacks/"
 
-A_MTO=1
-A_MTM=2
 D_OTO=1
 D_MTO=2
 VFIRST=0
@@ -13,19 +11,19 @@ ALL_LEFT=3
 ALL_RIGHT=4
 ATT_YES=0
 ATT_NO=1
-ROUNDS="-r"
+ROUNDS="-a"
 
 for SIDE in $ALL_RIGHT # $ALL_LEFT
 do
-for Y in 1
+for RIGHT in 1
 do
-for W in 1
+for LEFT in 1
 do
 for VIC in $ATT_YES $ATT_NO
 do
 for SAMP in 40 80
 do
- ./runAttacks -a $A_MTM -d $D_MTO -o $VFIRST -l $SIDE -c 2 -m 0 -x 0 $ROUNDS 80 -s $SAMP -t $VIC -B 0 -E 0 -W $W -X 0 -Y $Y -Z 0 -e 1 $OUTDIR 
+ ./runAttacks -l $LEFT -r $RIGHT -d $D_MTO -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 80 -s $SAMP -t $VIC -B 0 -E 0 -L 0 -R 0 -e 1 $OUTDIR 
 done
 done
 done
