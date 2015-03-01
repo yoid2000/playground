@@ -23,6 +23,7 @@ extern bucket *makeSegregatedBucketFromList(int mask,
                              bucket *userList, 
                              int userListSize);
 extern blocks *defineBlocks(int samples, int blocksPerSample, int *lastBlock);
+extern float putBucket(bucket *bp, attack_setup *as);
 
 #define USER_LIST_SIZE 0x100000  
 
@@ -32,7 +33,7 @@ int rightGuesses;
 int wrongGuesses;
 int notSure;
 
-int *accuracy;
+float *accuracy;
 int accIndex;
 int accSize;
 
@@ -100,14 +101,14 @@ initAttackStats(int numSamples, attack_setup *as)
     accSize = numSamples * as->numRounds * 
                                 (as->maxLeftBuckets + as->maxRightBuckets);
   }
-  accuracy = (int *) calloc(accSize, sizeof (int *));
+  accuracy = (float *) calloc(accSize, sizeof (float *));
   accIndex = 0;
 }
 
 computeAttackStats(int numSamples, attack_setup *as) {
   mystats accS, diffS;
 
-  getStatsInt(&accS, accuracy, accIndex);
+  getStatsFloat(&accS, accuracy, accIndex);
   getStatsFloat(&diffS, diffAttackDiffs, attackRoundNum);
   fprintf(as->f, "\n%d samples, right %d%%, answers: av %.2f, sd = %.2f, error: av = %.2f, sd = %.2f\n",
          numSamples,
@@ -122,7 +123,8 @@ computeAttackStats(int numSamples, attack_setup *as) {
 }
 
 makeChaffBuckets(bucket *userList, attack_setup *as) {
-  int temp, bsize1, bsize2, i, chaffAmount, noisyCount;
+  int temp, bsize1, bsize2, i, chaffAmount;
+  float noisyCount;
   int overlap, absNumOverlap;
   bucket *bp1, *bp2;
   compare c;
@@ -172,7 +174,7 @@ oneMtMattack(int numSamples,
 {
   int i, j, blockIndex=0;
   int baseBlocks;
-  int noisyCount;
+  float noisyCount;
   int mask, max_bsize, shift;
   bucket *temp, *vbp;  // victim
   mtm_cluster mc;
@@ -181,7 +183,7 @@ oneMtMattack(int numSamples,
   int s, b;     // side and bucket for bp[][]
   blocks *block_array = NULL;
   int block, lastBlock, first_s;
-  int sums[2];
+  float sums[2];
   float av1, av2;
 
   sums[LEFT] = 0; sums[RIGHT] = 0;
@@ -298,13 +300,13 @@ oneMtMattack(int numSamples,
     s = first_s;
     for (b = 0; b < mc.numBuckets[s]; b++) {
       noisyCount = putBucket(mc.bucket[s][b].bp, as);
-      accuracy[accIndex++] = (mc.bucket[s][b].bp)->bsize - noisyCount;
+      accuracy[accIndex++] = (float)((mc.bucket[s][b].bp)->bsize) - noisyCount;
       sums[s] += noisyCount;
     }
     s = (s==RIGHT)?LEFT:RIGHT;
     for (b = 0; b < mc.numBuckets[s]; b++) {
       noisyCount = putBucket(mc.bucket[s][b].bp, as);
-      accuracy[accIndex++] = (mc.bucket[s][b].bp)->bsize - noisyCount;
+      accuracy[accIndex++] = (float)((mc.bucket[s][b].bp)->bsize) - noisyCount;
       sums[s] += noisyCount;
     }
   }
@@ -312,8 +314,8 @@ oneMtMattack(int numSamples,
   free(bbp);
   free(block_array);
   freeBucket(vbp);
-  av1 = (float)((float) sums[LEFT] / (float) numSamples);
-  av2 = (float)((float) sums[RIGHT] / (float) numSamples);
+  av1 = (float)(sums[LEFT] / (float) numSamples);
+  av2 = (float)(sums[RIGHT] / (float) numSamples);
   return(av2 - av1);
 }
 
@@ -321,8 +323,8 @@ float
 oneMtOattack(int numSamples, bucket *userList, attack_setup *as)
 {
   int i, j, mask, max_bsize, shift;
-  int sum1=0, sum2=0;
-  int noisyCount;
+  float sum1=0.0, sum2=0.0;
+  float noisyCount;
   float av1, av2;
   bucket *pbp, *vbp, *temp;  // *vbp = victim
   bucket **cbp;   // children
@@ -369,21 +371,21 @@ oneMtOattack(int numSamples, bucket *userList, attack_setup *as)
     if (((as->location == VICTIM_IN_PARENT) && (as->order == VICTIM_FIRST)) ||
        ((as->location != VICTIM_IN_PARENT) && (as->order == VICTIM_LAST))) {
       noisyCount = putBucket(pbp, as);
-      accuracy[accIndex++] = pbp->bsize - noisyCount;
+      accuracy[accIndex++] = (float) pbp->bsize - noisyCount;
       sum1 += noisyCount;
     }
     if (as->order == VICTIM_LAST) {
       for (j = (as->numChildren-1); j >= 0; j--){
         // go in reverse order here so that the victim bucket goes last
         noisyCount = putBucket(cbp[j], as);
-        accuracy[accIndex++] = (cbp[j])->bsize - noisyCount;
+        accuracy[accIndex++] = (float) (cbp[j])->bsize - noisyCount;
         sum2 += noisyCount;
       }
     }
     else if (as->order == VICTIM_FIRST) {
       for (j = 0; j < as->numChildren; j++) {
         noisyCount = putBucket(cbp[j], as);
-        accuracy[accIndex++] = (cbp[j])->bsize - noisyCount;
+        accuracy[accIndex++] = (float) (cbp[j])->bsize - noisyCount;
         sum2 += noisyCount;
       }
     }
@@ -391,15 +393,15 @@ oneMtOattack(int numSamples, bucket *userList, attack_setup *as)
        ((as->location != VICTIM_IN_PARENT) && (as->order == VICTIM_LAST)))) {
       // didn't put parent before, so do it now
       noisyCount = putBucket(pbp, as);
-      accuracy[accIndex++] = pbp->bsize - noisyCount;
+      accuracy[accIndex++] = (float) pbp->bsize - noisyCount;
       sum1 += noisyCount;
     }
   }
 
   free(cbp);
   freeBucket(vbp);
-  av1 = (float)((float) sum1 / (float) numSamples);
-  av2 = (float)((float) sum2 / (float) numSamples);
+  av1 = (float)(sum1 / (float) numSamples);
+  av2 = (float)(sum2 / (float) numSamples);
   return(av2 - av1);
 }
 
@@ -407,8 +409,8 @@ float
 oneOtOattack(int numSamples, bucket *userList, attack_setup *as)
 {
   int i;
-  int sum1=0, sum2=0;
-  int noisyCount;
+  float sum1=0.0, sum2=0.0;
+  float noisyCount;
   float av1, av2;
   bucket *bp1, *bp2, *vbp, *temp;  // *vbp = victim
 
@@ -434,17 +436,17 @@ oneOtOattack(int numSamples, bucket *userList, attack_setup *as)
       temp = bp1; bp1 = bp2; bp2 = temp;
     }
     noisyCount = putBucket(bp1, as);
-    accuracy[accIndex++] = bp1->bsize - noisyCount;
+    accuracy[accIndex++] = (float) bp1->bsize - noisyCount;
     sum1 += noisyCount;
     makeChaffBuckets(userList, as);
     noisyCount = putBucket(bp2, as);
-    accuracy[accIndex++] = bp2->bsize - noisyCount;
+    accuracy[accIndex++] = (float) bp2->bsize - noisyCount;
     sum2 += noisyCount;
     makeChaffBuckets(userList, as);
   }
   freeBucket(vbp);
-  av1 = (float)((float) sum1 / (float) numSamples);
-  av2 = (float)((float) sum2 / (float) numSamples);
+  av1 = (float)(sum1 / (float) numSamples);
+  av2 = (float)(sum2 / (float) numSamples);
   return(av2 - av1);
 }
 

@@ -39,6 +39,8 @@ int maxSfIndex;
 
 #define MAX_TOUCH_COUNT 20
 int numTouches[MAX_TOUCH_COUNT];
+#define MAX_OVERLAP_HISTOGRAM 11
+int overlapHistogram[MAX_OVERLAP_HISTOGRAM];
 int numComparisons;
 int numPastDigest;
 int numCloseSize;
@@ -67,6 +69,9 @@ initDefenseStats()
   for (i = 0; i < MAX_TOUCH_COUNT; i++) {
     numTouches[i] = 0;
   }
+  for (i = 0; i < MAX_OVERLAP_HISTOGRAM; i++) {
+    overlapHistogram[i] = 0;
+  }
   numPutBuckets = 0;
   numLowCount = 0;
   numComparisons = 0;
@@ -85,14 +90,21 @@ computeDefenseStats(int numRounds, attack_setup *as)
   int i;
 
   if (as->defense >= OtO_DEFENSE) {
-    fprintf(as->f, "Num Touches Histogram:\n");
+    fprintf(as->f, "Num Touches Histogram: ");
     for (i = 0; i < MAX_TOUCH_COUNT; i++) {
       if (numTouches[i] != 0) {
-        fprintf(as->f, "    %d: %.2f\n", i, 
+        fprintf(as->f, "%d: %.2f ", i, 
                (float)((float)numTouches[i]/(float)numRounds));
       }
     }
-    fprintf(as->f, "%.2f buckets (%.2f low count), %.2f bucket pairs\n", 
+    fprintf(as->f, "\nOverlap Histogram: ");
+    for (i = 0; i < MAX_OVERLAP_HISTOGRAM; i++) {
+      if (overlapHistogram[i] != 0) {
+        fprintf(as->f, "%d: %.2f ", i*10, 
+               (float)((float)overlapHistogram[i]/(float)numRounds));
+      }
+    }
+    fprintf(as->f, "\n%.2f buckets (%.2f low count), %.2f bucket pairs\n", 
            (float)((float)numPutBuckets/(float)numRounds), 
            (float)((float)numLowCount/(float)numRounds), 
            (float)((float)numComparisons/(float)numRounds));
@@ -132,7 +144,7 @@ endDefense()
   free(storedFilters);
 }
 
-int
+float
 computeNoisyCount(bucket *bp)
 {
   int i;
@@ -155,7 +167,10 @@ computeNoisyCount(bucket *bp)
   numRounding++;
 
   noise = roundedNoise;
-  return((int)(bp->bsize + noise));
+  // even though I round to an integer, I am never-the-less
+  // returning a float here because there are some funny error
+  // biases that I don't understand...
+  return((float)bp->bsize + noise);
 }
 
 /*
@@ -267,10 +282,10 @@ checkAllChildCombinations(bucket *pbp,     // parent
   return(adjustment);
 }
 
-// the following threshold should catch most though not quite all near
-// matching buckets.  Because of added noise, it is not critical
-// that we catch all near matches.
-#define NEAR_MATCH_THRESHOLD 90
+// A NEAR_MATCH_THRESHOLD of 90 was failing with high numbers of
+// children (i.e. 5), because a single match would be missed on most
+// clusters.  So we've lowered the threshold to 80.
+#define NEAR_MATCH_THRESHOLD 80
 #define WEAK_MATCH_THRESHOLD 30
 #define LOW_COUNT_SOFT_THRESHOLD 5
 #define LOW_COUNT_HARD_THRESHOLD 1
@@ -291,7 +306,7 @@ int
 putBucketDefend(bucket *bp, attack_setup *as) 
 {
   LIST_HEAD(listhead, bucket_t) head;
-  int i, j, overlap;
+  int i, j, overlap, ohist;
   compare c;
   bucket *bp1, *lbp, *rbp;
   int childAdded;
@@ -320,12 +335,20 @@ putBucketDefend(bucket *bp, attack_setup *as)
     bp1 = storedFilters[i];
     compareFullFilters(bp1, bp, &c);
     overlap = (int) ((float) c.overlap * (float) 1.5625);
+    if ((ohist = (int) ((float) overlap / (float) 10)) > 
+                                            MAX_OVERLAP_HISTOGRAM) {
+      printf("putBucketDefend() ERROR bad ohist %d (%d)\n", ohist, overlap);
+      exit(1);
+    }
+    overlapHistogram[ohist]++;
+printf("overlap = %d (ohist %d): ", overlap, ohist);
     if ((as->defense >= MtM_DEFENSE) && (overlap > WEAK_MATCH_THRESHOLD)) {
       // this is a candidate for an MtM attack.  store for later.
       LIST_INSERT_HEAD(&head, bp1, mtm_list);
     }
     if (overlap > NEAR_MATCH_THRESHOLD) {
       // filters suggest that there is a lot of overlap
+printf("..........near match..........\n");
       numPastDigest++;
       // for every new MtO and OtO combination, create a "composite"
       //     bucket (composed of combinations of children), and check for
@@ -377,11 +400,11 @@ putBucketDefend(bucket *bp, attack_setup *as)
   return(adjustment);
 }
 
-int
+float
 putBucket(bucket *bp, attack_setup *as)
 {
   bucket *allbp;
-  int noisyCount;
+  float noisyCount;
   int adjustment=0;
 
   numPutBuckets++;
@@ -402,7 +425,7 @@ putBucket(bucket *bp, attack_setup *as)
     adjustment = putBucketDefend(bp, as);
     numAdjust += adjustment;
   }
-  noisyCount = computeNoisyCount(bp) + adjustment;
+  noisyCount = computeNoisyCount(bp) + (float)adjustment;
 
   return(noisyCount);
 }
