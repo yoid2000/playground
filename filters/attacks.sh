@@ -1,7 +1,7 @@
 #!/bin/bash
 
 DIR=$(pwd)
-OUTDIR="temp"
+OUTDIR="/home/francis/attacks/"
 
 A_MTO=1
 A_MTM=2
@@ -15,13 +15,21 @@ ATT_YES=0
 ATT_NO=1
 ROUNDS="-r"
 
-for s in 20
+for SIDE in $ALL_RIGHT # $ALL_LEFT
 do
-# ./runAttacks -a $A_MTO -d $D_OTO -o $VFIRST -l $ALL_CHILD -c 2 -m 0 -x 0 $ROUNDS 80 -s $s -t $ATT_NO -B 0 -E 0 -W 2 -X 2 -Y 2 -Z 2 -e 1 $OUTDIR &
-sleep 1
- ./runAttacks -a $A_MTM -d $D_MTO -o $VFIRST -l $ALL_RIGHT -c 2 -m 0 -x 0 $ROUNDS 40 -s $s -t $ATT_YES -B 0 -E 0 -W 1 -X 1 -Y 5 -Z 5 -e 1 $OUTDIR 
- ./runAttacks -a $A_MTM -d $D_MTO -o $VFIRST -l $ALL_RIGHT -c 2 -m 0 -x 0 $ROUNDS 40 -s $s -t $ATT_NO -B 0 -E 0 -W 1 -X 1 -Y 5 -Z 5 -e 1 $OUTDIR 
- sleep 1
+for Y in 1
+do
+for W in 1
+do
+for VIC in $ATT_YES $ATT_NO
+do
+for SAMP in 40 80
+do
+ ./runAttacks -a $A_MTM -d $D_MTO -o $VFIRST -l $SIDE -c 2 -m 0 -x 0 $ROUNDS 80 -s $SAMP -t $VIC -B 0 -E 0 -W $W -X 0 -Y $Y -Z 0 -e 1 $OUTDIR 
+done
+done
+done
+done
 done
 exit
 

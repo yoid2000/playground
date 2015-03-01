@@ -631,9 +631,9 @@ printCommandLines(attack_setup *as)
   printf("     num_base_blocks_past_min >= 0\n");
   printf("     num_extra_blocks >= 0\n");
   printf("     min_left >= 1\n");
-  printf("     max_left >= min_left\n");
+  printf("     max_left >= min_left (0 means same as min)\n");
   printf("     min_right >= 1\n");
-  printf("     max_right >= min_right\n");
+  printf("     max_right >= min_right (0 means same as min)\n");
 }
 
 main(int argc, char *argv[])
@@ -680,9 +680,9 @@ main(int argc, char *argv[])
   as.numBaseBlocks = 0;
   as.numExtraBlocks = 0;   
   as.minLeftBuckets = 2;   
-  as.maxLeftBuckets = 2;   
+  as.maxLeftBuckets = 0;   // set same as minLeftBuckets
   as.minRightBuckets = 2;   
-  as.maxRightBuckets = 2;    
+  as.maxRightBuckets = 0;    // set same as minRightBuckets
   as.numLeftBuckets = 0;     // gets set later
   as.numRightBuckets = 0;     // gets set later
 
@@ -754,6 +754,13 @@ main(int argc, char *argv[])
     seed = time(NULL);
   }
   srand48((long int) seed);
+
+  if (as.maxLeftBuckets == 0) {
+    as.maxLeftBuckets = as.minLeftBuckets;
+  }
+  if (as.maxRightBuckets == 0) {
+    as.maxRightBuckets = as.minRightBuckets;
+  }
 
   ran = quick_hash(filename) & 0xfff;
   sprintf(temp, ".%d", ran);

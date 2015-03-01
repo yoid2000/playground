@@ -1,0 +1,1 @@
+run -a 2 -d 2 -o 0 -l 4 -c 2 -m 0 -x 0 -r 80 -s 5 -t 0 -B 0 -E 0 -W 1 -X 0 -Y 5 -Z 0 -e 1 /home/francis/attacks
