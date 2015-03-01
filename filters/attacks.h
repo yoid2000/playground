@@ -19,12 +19,6 @@
 #define VICTIM_ATTRIBUTE_YES 0
 #define VICTIM_ATTRIBUTE_NO 1
 
-// Type of attack
-#define NUM_ATTACKS 3
-#define OtO_ATTACK 0
-#define MtO_ATTACK 1
-#define MtM_ATTACK 2
-
 // Subtype of attack
 #define NUM_SUBTYPES 2
 #define RANDOM_CHILDREN 0
@@ -40,10 +34,8 @@
 #define VICTIM_IN_ONE_RIGHT 5
 
 typedef struct attack_setup_t {
-  int attack;
-  char *attack_str[NUM_ATTACKS];
   int subAttack;
-  char *subAttack_str[NUM_ATTACKS];
+  char *subAttack_str[NUM_SUBTYPES];
   int defense;
   char *defense_str[NUM_DEFENSES];
   int order;
