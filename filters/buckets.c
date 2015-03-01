@@ -396,23 +396,6 @@ makeRandomBucketFromList(int bsize, bucket *userList)
   return(bp);
 }
 
-randomizeBlocks(blocks *bap, int lastBlock)
-{
-  int i;
-  int r1, r2, sampleNum, childNum;
-
-  for (i = 0; i < lastBlock; i++) {
-    r1 = getRandInteger(0, lastBlock);
-    r2 = getRandInteger(0, lastBlock);
-    sampleNum = bap[r1].sampleNum;
-    childNum = bap[r1].childNum;
-    bap[r1].sampleNum = bap[r2].sampleNum;
-    bap[r1].childNum = bap[r2].childNum;
-    bap[r2].sampleNum = sampleNum;
-    bap[r2].childNum = childNum;
-  }
-}
-
 /*
  *  Returns an array of block definitions that must be freed by caller
  */
@@ -432,7 +415,6 @@ defineBlocks(int samples, int blocksPerSample, int *lastBlock)
       k++;
     }
   }
-  randomizeBlocks(bap, *lastBlock);
   return(bap);
 }
 
@@ -586,28 +568,31 @@ checkClusterProperties(mtm_cluster *mc)
     }
   }
   
-  // make sure every bucket is unique
-  for (i = 0; i < mc->numBuckets[LEFT]; i++) {
-    // compare left-side buckets
-    for (j = 0; j < mc->numBuckets[LEFT]; j++) {
-      if (i == j) {continue;}
-      if (bucketBlocksMatch(&(mc->bucket[LEFT][i]), &(mc->bucket[LEFT][j]))) {
-        return(BUCKET_NOT_UNIQUE1);
+  // make sure every bucket is unique, unless we only have one bucket
+  // on each side (i.e. special case of OtO attack)
+  if ((mc->numBuckets[LEFT] != 1) || (mc->numBuckets[RIGHT] != 1)) {
+    for (i = 0; i < mc->numBuckets[LEFT]; i++) {
+      // compare left-side buckets
+      for (j = 0; j < mc->numBuckets[LEFT]; j++) {
+        if (i == j) {continue;}
+        if (bucketBlocksMatch(&(mc->bucket[LEFT][i]), &(mc->bucket[LEFT][j]))) {
+          return(BUCKET_NOT_UNIQUE1);
+        }
+      }
+      // compare left-side with right-side buckets
+      for (j = 0; j < mc->numBuckets[RIGHT]; j++) {
+        if (bucketBlocksMatch(&(mc->bucket[LEFT][i]), &(mc->bucket[RIGHT][j]))) {
+          return(BUCKET_NOT_UNIQUE2);
+        }
       }
     }
-    // compare left-side with right-side buckets
-    for (j = 0; j < mc->numBuckets[RIGHT]; j++) {
-      if (bucketBlocksMatch(&(mc->bucket[LEFT][i]), &(mc->bucket[RIGHT][j]))) {
-        return(BUCKET_NOT_UNIQUE2);
-      }
-    }
-  }
-  for (i = 0; i < mc->numBuckets[RIGHT]; i++) {
-    // compare right-side buckets
-    for (j = 0; j < mc->numBuckets[RIGHT]; j++) {
-      if (i == j) {continue;}
-      if (bucketBlocksMatch(&(mc->bucket[RIGHT][i]), &(mc->bucket[RIGHT][j]))) {
-        return(BUCKET_NOT_UNIQUE3);
+    for (i = 0; i < mc->numBuckets[RIGHT]; i++) {
+      // compare right-side buckets
+      for (j = 0; j < mc->numBuckets[RIGHT]; j++) {
+        if (i == j) {continue;}
+        if (bucketBlocksMatch(&(mc->bucket[RIGHT][i]), &(mc->bucket[RIGHT][j]))) {
+          return(BUCKET_NOT_UNIQUE3);
+        }
       }
     }
   }

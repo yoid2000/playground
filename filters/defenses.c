@@ -284,7 +284,8 @@ checkAllChildCombinations(bucket *pbp,     // parent
 
 // A NEAR_MATCH_THRESHOLD of 90 was failing with high numbers of
 // children (i.e. 5), because a single match would be missed on most
-// clusters.  So we've lowered the threshold to 80.
+// clusters.  So we've lowered the threshold to 80.  85 would probably
+// be ok in practice too, but this requires more experimentation.
 #define NEAR_MATCH_THRESHOLD 80
 #define WEAK_MATCH_THRESHOLD 30
 #define LOW_COUNT_SOFT_THRESHOLD 5
@@ -341,14 +342,12 @@ putBucketDefend(bucket *bp, attack_setup *as)
       exit(1);
     }
     overlapHistogram[ohist]++;
-printf("overlap = %d (ohist %d): ", overlap, ohist);
     if ((as->defense >= MtM_DEFENSE) && (overlap > WEAK_MATCH_THRESHOLD)) {
       // this is a candidate for an MtM attack.  store for later.
       LIST_INSERT_HEAD(&head, bp1, mtm_list);
     }
     if (overlap > NEAR_MATCH_THRESHOLD) {
       // filters suggest that there is a lot of overlap
-printf("..........near match..........\n");
       numPastDigest++;
       // for every new MtO and OtO combination, create a "composite"
       //     bucket (composed of combinations of children), and check for
