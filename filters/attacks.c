@@ -159,22 +159,74 @@ worstCaseBlocks(attack_setup *as)
                         as->maxLeftBuckets + as->maxRightBuckets - 1);
 }
 
+int
+makeClusterAndBuckets(mtm_cluster *mc, 
+                      attack_setup *as, 
+                      bucket *vbp,
+                      bucket *userList,
+                      blocks *block_array,
+                      int baseBlocks, 
+                      int blockIndex,
+                      int numSamples)
+{
+  int mask, max_bsize, shift, block;
+  int j, s, b;
+  bucket **bbp;   // temporary buckets for each block
+  bucket *temp;
+
+  bbp = (bucket **) calloc(worstCaseBlocks(as), sizeof(bucket *));
+  getSegregateMask(numSamples, worstCaseBlocks(as),
+                                           &mask, &max_bsize, &shift);
+
+  if (defineCluster(mc, baseBlocks, as) == 0) {
+    printf("makeClusterAndBuckets ERROR %d\n", baseBlocks);
+    printAttackSetup(as);
+    printMtmCluster(mc);
+    exit(1);
+  }
+  // build all the per-block user lists
+  for (j = 0; j < worstCaseBlocks(as); j++) {
+    bbp[j] = makeSegregatedBucketFromList(mask, shift, max_bsize, 
+                       block_array[blockIndex].sampleNum, 
+                       block_array[blockIndex].childNum, 
+                       *(vbp->list), userList, USER_LIST_SIZE);
+    blockIndex++;
+  }
+
+  // build the buckets from the per-block user lists
+  for (s = 0; s < 2; s++) {
+    for (b = 0; b < mc->numBuckets[s]; b++) {
+      mc->bucket[s][b].bp = makeBucket(0);
+      for (j = 0; j < mc->bucket[s][b].numBlocks; j++) {
+        block = mc->bucket[s][b].blocks[j];
+        temp = combineBuckets(bbp[block], mc->bucket[s][b].bp);
+        freeBucket(mc->bucket[s][b].bp); mc->bucket[s][b].bp = temp;
+      }
+    }
+  }
+
+  // free all of the per-block user lists
+  for (j = 0; j < worstCaseBlocks(as); j++) {
+    freeBucket(bbp[j]);
+  }
+  free(bbp);
+  return(blockIndex);
+}
+
 float
-oneMtMattack(int numSamples, 
+oneAttack(int numSamples, 
              bucket *userList, 
              attack_setup *as)
 {
   int i, j, blockIndex=0;
   int baseBlocks;
   float noisyCount;
-  int mask, max_bsize, shift;
   bucket *temp, *vbp;  // victim
   mtm_cluster mc;
-  bucket **bbp;   // temporary buckets for each block
   bucket *bp[2][MAX_NUM_BUCKETS_PER_SIDE];    // actual buckets
   int s, b;     // side and bucket for bp[][]
   blocks *block_array = NULL;
-  int block, lastBlock, first_s;
+  int lastBlock, first_s;
   float sums[2];
   float av1, av2;
 
@@ -182,18 +234,15 @@ oneMtMattack(int numSamples,
 
   if ((as->maxLeftBuckets > MAX_NUM_BUCKETS_PER_SIDE) ||
       (as->maxRightBuckets > MAX_NUM_BUCKETS_PER_SIDE)) {
-    printf("oneMtMattack ERROR1 %d, %d\n",  
+    printf("oneAttack ERROR1 %d, %d\n",  
                    as->maxLeftBuckets, as->maxRightBuckets);
     exit(1);
   }
 
   block_array = defineBlocks(numSamples, worstCaseBlocks(as), &lastBlock);
-  bbp = (bucket **) calloc(worstCaseBlocks(as), sizeof(bucket *));
 
   // make victim
   vbp = makeRandomBucketFromList(1, userList);
-  getSegregateMask(numSamples, worstCaseBlocks(as),
-                                           &mask, &max_bsize, &shift);
   for (i = 0; i < numSamples; i++) {
     makeChaffBuckets(userList, as);
     as->numLeftBuckets = getRandInteger(as->minLeftBuckets, 
@@ -204,49 +253,20 @@ oneMtMattack(int numSamples,
                  as->numLeftBuckets + as->numRightBuckets - 1;
 
     if ((blockIndex + baseBlocks) > lastBlock) {
-      printf("oneMtMattack ERROR2 %d, %d, %d, %d\n", i, blockIndex, baseBlocks,
+      printf("oneAttack ERROR2 %d, %d, %d, %d\n", i, blockIndex, baseBlocks,
                                                  lastBlock);
       printAttackSetup(as);
       exit(1);
     }
 
     if ((baseBlocks + as->numExtraBlocks) > MAX_NUM_BLOCKS) {
-      printf("oneMtMattack ERROR3 %d, %d\n",  
+      printf("oneAttack ERROR3 %d, %d\n",  
                      baseBlocks, as->numExtraBlocks);
       exit(1);
     }
 
-    if (defineCluster(&mc, baseBlocks, as) == 0) {
-      printf("oneMtMattack ERROR4 %d\n", baseBlocks);
-      printAttackSetup(as);
-      printMtmCluster(&mc);
-      exit(1);
-    }
-    // build all the per-block user lists
-    for (j = 0; j < worstCaseBlocks(as); j++) {
-      bbp[j] = makeSegregatedBucketFromList(mask, shift, max_bsize, 
-                         block_array[blockIndex].sampleNum, 
-                         block_array[blockIndex].childNum, 
-                         *(vbp->list), userList, USER_LIST_SIZE);
-      blockIndex++;
-    }
-
-    // build the buckets from the per-block user lists
-    for (s = 0; s < 2; s++) {
-      for (b = 0; b < mc.numBuckets[s]; b++) {
-        mc.bucket[s][b].bp = makeBucket(0);
-        for (j = 0; j < mc.bucket[s][b].numBlocks; j++) {
-          block = mc.bucket[s][b].blocks[j];
-          temp = combineBuckets(bbp[block], mc.bucket[s][b].bp);
-          freeBucket(mc.bucket[s][b].bp); mc.bucket[s][b].bp = temp;
-        }
-      }
-    }
-
-    // free all of the per-block user lists
-    for (j = 0; j < worstCaseBlocks(as); j++) {
-      freeBucket(bbp[j]);
-    }
+    blockIndex = makeClusterAndBuckets(&mc, as, vbp, userList, block_array,
+                                     baseBlocks, blockIndex, numSamples);
 
     // ok, now we have a user-list bucket for each bucket in the
     // cluster.  We need to add the victim in the right place(s),
@@ -303,7 +323,6 @@ oneMtMattack(int numSamples,
     }
   }
   // report
-  free(bbp);
   free(block_array);
   freeBucket(vbp);
   av1 = (float)(sums[LEFT] / (float) numSamples);
@@ -351,7 +370,7 @@ runAttack(bucket *userList, attack_setup *as)
   wrongGuesses = 0;
   for (i = 0; i < as->numRounds; i++) {
     initDefense(10000);
-    answer = oneMtMattack(as->numSamples, userList, as);
+    answer = oneAttack(as->numSamples, userList, as);
     makeDecision(answer, as);
     endDefense();
     if (attackRoundNum == as->numRounds) {
@@ -392,7 +411,7 @@ printCommandLines(attack_setup *as)
 {
   int i;
 
-  printf("Usage: ./runAttacks -l min_left -r min_right -L max_left -L max_right -d defense -o victim_order -v victim_location -t victim_attribute -m min_chaff -x max_chaff -a num_rounds -s num_samples -e seed -B num_base_blocks_past_min -E num_extra_blocks <directory>\n ");
+  printf("Usage: ./runAttacks -l min_left -r min_right -L max_left -R max_right -d defense -o victim_order -v victim_location -t victim_attribute -m min_chaff -x max_chaff -a num_rounds -s num_samples -e seed -B num_base_blocks_past_min -E num_extra_blocks <directory>\n ");
   printf("     defense values:\n");
   for (i = 0; i < NUM_DEFENSES; i++) {
     printf("          %d = %s\n", i, as->defense_str[i]);
@@ -563,12 +582,135 @@ main(int argc, char *argv[])
 
   printAttackSetup(&as);
 
+  measureClusters(userList, &as); exit(1);
   //test_getSegregateMask(userList); exit(1);
-  runAttack(userList, &as);
+  //runAttack(userList, &as);
   printf("Done: %s\n", filename);
 }
 
 /************  TESTS ****************/
+
+
+#define NUM_M_TRIALS 100
+#define MIN_B_PER_SIDE 2
+#define MAX_B_PER_SIDE 4
+measureClusters(bucket *userList, attack_setup *as)
+{
+  int numBuckets;
+  int i, j, k, s1, s2, b1, b2;
+  int mask, max_bsize, shift;
+  int baseBlocks, lastBlock, total;
+  blocks *block_array = NULL;
+  bucket **bbp;   // temporary buckets for each block
+  bucket *temp, *vbp;  // victim
+  mtm_cluster mc;
+  compare c;
+  int overlap;
+  int *vlow, *low, *high, *vhigh;
+  int vlow_index, low_index, high_index, vhigh_index;
+  mystats vlowS, lowS, highS, vhighS;
+
+  fprintf(as->f, "left_buckets right_buckets base_blocks extra_blocks vlow_frac vlow_av vlow_sd low_frac low_av low_sd high_frac high_av high_sd vhigh_frac vhigh_av vhigh_sd\n");
+
+  as->numExtraBlocks = 0;
+
+  // make max size arrays for holding data points
+  i = MAX_B_PER_SIDE * MAX_B_PER_SIDE * NUM_M_TRIALS;
+  vlow = (int *) calloc(i, sizeof (int));
+  low = (int *) calloc(i, sizeof (int));
+  high = (int *) calloc(i, sizeof (int));
+  vhigh = (int *) calloc(i, sizeof (int));
+
+  // make victim
+  vbp = makeRandomBucketFromList(1, userList);
+
+  for (numBuckets = MIN_B_PER_SIDE; numBuckets <= MAX_B_PER_SIDE; numBuckets++) {
+    as->minLeftBuckets = numBuckets;
+    as->maxLeftBuckets = numBuckets;
+    as->minRightBuckets = numBuckets;
+    as->maxRightBuckets = numBuckets;
+    as->numLeftBuckets = numBuckets;
+    as->numRightBuckets = numBuckets;
+    for (i = 0; i < 5; i += 2) {
+      as->numBaseBlocks = i;
+      for (k = 0; k < 5; k += 2) {
+        as->numExtraBlocks = k;
+        vlow_index=0, low_index=0, high_index=0, vhigh_index=0;
+        for (j = 0; j < NUM_M_TRIALS; j++) {
+          initCluster(&mc);
+          baseBlocks = as->numBaseBlocks + 
+                     as->numLeftBuckets + as->numRightBuckets - 1;
+          block_array = defineBlocks(1, worstCaseBlocks(as), &lastBlock);
+
+
+          makeClusterAndBuckets(&mc, as, vbp, userList, block_array,
+                                              baseBlocks, 0, 1);
+
+          // this shouldn't influence the measurements much, but go ahead
+          // and add the victim to one arbitrary bucket
+          temp = combineBuckets(mc.bucket[RIGHT][0].bp, vbp);
+          freeBucket(mc.bucket[RIGHT][0].bp); mc.bucket[RIGHT][0].bp = temp;
+
+          // make digests
+          for (s1 = 0; s1 < 2; s1++) {
+            for (b1 = 0; b1 < mc.numBuckets[s1]; b1++) {
+              makeFilterFromBucket(mc.bucket[s1][b1].bp);
+            }
+          }
+
+          // measure overlap between all pairs of buckets
+          for (s1 = 0; s1 < 2; s1++) {
+            for (b1 = 0; b1 < mc.numBuckets[s1]; b1++) {
+              for (s2 = s1; s2 < 2; s2++) {
+                for (b2 = b1; b2 < mc.numBuckets[s2]; b2++) {
+                  if ((s1 == s2) && (b1 == b2)) { continue; }
+                  compareFullFilters(mc.bucket[s1][b1].bp, 
+                                                mc.bucket[s2][b2].bp, &c);
+                  overlap = (int) ((float) c.overlap * (float) 1.5625);
+                  if (overlap < 20) {
+                    vlow[vlow_index++] = overlap;
+                  }
+                  else if (overlap < 50) {
+                    low[low_index++] = overlap;
+                  }
+                  else if (overlap < 80) {
+                    high[high_index++] = overlap;
+                  }
+                  else {
+                    vhigh[vhigh_index++] = overlap;
+                  }
+                }
+              }
+            }
+          }
+          // free all the buckets etc.
+          for (s1 = 0; s1 < 2; s1++) {
+            for (b1 = 0; b1 < mc.numBuckets[s1]; b1++) {
+              freeBucket(mc.bucket[s1][b1].bp);
+              mc.bucket[s1][b1].bp = NULL;  // shouldn't be necessary...
+            }
+          }
+          free(block_array);
+        }
+        printMtmCluster(&mc);
+        // report the results
+        getStatsInt(&vlowS, vlow, vlow_index);
+        getStatsInt(&lowS, low, low_index);
+        getStatsInt(&highS, high, high_index);
+        getStatsInt(&vhighS, vhigh, vhigh_index);
+        total = vlow_index + low_index + high_index + vhigh_index;
+        fprintf(as->f, "%d %d %d %d %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f\n",
+           as->numLeftBuckets, as->numRightBuckets, as->numBaseBlocks,
+           as->numExtraBlocks,
+           (float)((float)vlow_index/(float)total), vlowS.av, vlowS.sd,
+           (float)((float)low_index/(float)total), lowS.av, lowS.sd,
+           (float)((float)high_index/(float)total), highS.av, highS.sd,
+           (float)((float)vhigh_index/(float)total), vhighS.av, vhighS.sd);
+      }
+    }
+  }
+  freeBucket(vbp);
+}
 
 do_getSegregateMask(bucket *userList, int numSamples, int numChildren)
 {
