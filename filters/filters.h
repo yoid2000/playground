@@ -44,7 +44,6 @@ typedef struct bucket_t {
   int sorted;	    // 1 if the user list has been sorted
   unsigned int children[MAX_CHILDREN];    // bucket index number
   int numChildren;
-  LIST_ENTRY(bucket_t) mtm_list;
 } bucket;
 
 typedef struct compare_t {
@@ -60,9 +59,18 @@ typedef struct compare_t {
   int overlap;
 } compare;
 
-
 typedef struct child_comb_t {
   unsigned int maxComb;
   unsigned int mask;
   bucket *cbp;
 } child_comb;
+
+#define MAX_CLUSTER_BUCKETS 16
+typedef struct cluster_t {
+  bucket *buckets[MAX_CLUSTER_BUCKETS];
+} cluster;
+
+typedef struct bucket_list_t {
+  cluster *cp;
+  LIST_ENTRY(bucket_list_t) clist;
+} bucket_list;

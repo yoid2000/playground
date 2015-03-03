@@ -476,58 +476,6 @@ sameOnBothSides(int block, mtm_cluster *mc)
   else { return(0); }
 }
 
-// this is broken....
-checkClusterBuckets(mtm_cluster *mc)
-{
-  int i, j, k, s, b, numDups, m;
-  unsigned int users[500];
-  bucket *bp;
-  int skip;
-
-  // first get a sample of users from each bucket
-  k = 0;
-  for (s = 0; s < 2; s++) {
-    for (b = 0; b < mc->numBuckets[s]; b++) {
-      bp = mc->bucket[s][b].bp;
-      skip = (int)((float)bp->bsize/(float)10) - 1;
-      if (skip == 0) { skip = 1; }
-      for (i = 0; i < bp->bsize; i += skip) {
-        users[k] = bp->list[i];
-        if (++k >= 500) {
-          printf("checkClusterbuckets() ERROR\n");  exit(1);
-        }
-      }
-    }
-  }
-  // now make sure there are no more than one duplicate among the users
-  numDups = 0;
-  for (i = 0; i < k; i++) {
-    for (j = i+1; j < k; j++) {
-      if ((users[i] == users[j]) && (users[i] != 0x1fffffff)) {
-        numDups++;
-        if (numDups > 1) {
-          printf("Dup: %x\n", users[i]);
-        }
-        // we found a dup, presumably the victim, so remove it from the list
-        users[j] = 0x1fffffff;
-        for (m = j+1; m < k; m++) {
-          if (users[m] == users[i]) { users[m] = 0x1fffffff; }
-        }
-        users[i] = 0x1fffffff;
-      }
-    }
-  }
-  if (numDups > 1) {
-    // something wrong, dump buckets...
-    for (s = 0; s < 2; s++) {
-      for (b = 0; b < mc->numBuckets[s]; b++) {
-        printBucket(mc->bucket[s][b].bp);
-      }
-    }
-    exit(1);
-  }
-}
-
 // checkClusterProperties error codes
 #define NO_ERROR 0
 #define DUPLICATE_BLOCKS 1
@@ -1107,25 +1055,25 @@ test_defineBlocks()
 
 test_linkedList()
 {
-  LIST_HEAD(listhead, bucket_t) head;
-  bucket *bp1, *bp2, *bp;
+  LIST_HEAD(listhead, bucket_list_t) head;
+  bucket_list *blp1, *blp2, *blp;
   
   LIST_INIT(&head);                       /* Initialize the list. */
   
-  bp1 = makeRandomBucket(100);
-  LIST_INSERT_HEAD(&head, bp1, mtm_list);
+  blp1 = (bucket_list *) malloc(sizeof(bucket_list));
+  LIST_INSERT_HEAD(&head, blp1, clist);
   
-  bp2 = makeRandomBucket(200);
-  LIST_INSERT_HEAD(&head, bp2, mtm_list);
-  //LIST_INSERT_AFTER(bp1, bp2, mtm_list);
+  blp2 = (bucket_list *) malloc(sizeof(bucket_list));
+  LIST_INSERT_HEAD(&head, blp2, clist);
+  //LIST_INSERT_AFTER(blp1, blp2, clist);
                                           /* Forward traversal. */
-  for (bp = head.lh_first; bp != NULL; bp = bp->mtm_list.le_next) {
-    printf("%p %d\n", bp, bp->bsize);
+  for (blp = head.lh_first; blp != NULL; blp = blp->clist.le_next) {
+    printf("%p\n", blp);
   }
   
   while (head.lh_first != NULL) {           /* Delete. */
     printf("%p\n", head.lh_first);
-    LIST_REMOVE(head.lh_first, mtm_list);
+    LIST_REMOVE(head.lh_first, clist);
   }
 }
 
