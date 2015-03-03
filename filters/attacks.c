@@ -590,6 +590,21 @@ main(int argc, char *argv[])
 
 /************  TESTS ****************/
 
+#define WITHOUT_OVERLAP 0
+#define WITH_OVERLAP 1
+int
+bucketsHaveACommonBlock(mtm_bucket *b1, mtm_bucket *b2)
+{
+  int i, j;
+  for (i = 0; i < b1->numBlocks; i++) {
+    for (j = 0; j < b2->numBlocks; j++) {
+      if (b1->blocks[i] == b2->blocks[j]) { return(WITH_OVERLAP); }
+    }
+  }
+  return(WITHOUT_OVERLAP);
+}
+
+
 
 #define NUM_M_TRIALS 100
 #define MIN_B_PER_SIDE 2
@@ -597,7 +612,7 @@ main(int argc, char *argv[])
 measureClusters(bucket *userList, attack_setup *as)
 {
   int numBuckets;
-  int i, j, k, s1, s2, b1, b2;
+  int i, j, k, o, s1, s2, b1, b2;
   int mask, max_bsize, shift;
   int baseBlocks, lastBlock, total;
   blocks *block_array = NULL;
@@ -606,20 +621,24 @@ measureClusters(bucket *userList, attack_setup *as)
   mtm_cluster mc;
   compare c;
   int overlap;
-  int *vlow, *low, *high, *vhigh;
-  int vlow_index, low_index, high_index, vhigh_index;
-  mystats vlowS, lowS, highS, vhighS;
+  int *vlow[2], *low[2], *high[2], *vhigh[2];
+  int vlow_index[2], low_index[2], high_index[2], vhigh_index[2];
+  mystats vlowS[2], lowS[2], highS[2], vhighS[2];
 
-  fprintf(as->f, "left_buckets right_buckets base_blocks extra_blocks vlow_frac vlow_av vlow_sd low_frac low_av low_sd high_frac high_av high_sd vhigh_frac vhigh_av vhigh_sd\n");
+  i = 0;
+  fprintf(as->f, "%d:overlap %d:left_buckets %d:right_buckets %d:base_blocks %d:extra_blocks %d:vlow_frac %d:vlow_av %d:vlow_sd %d:low_frac %d:low_av %d:low_sd %d:high_frac %d:high_av %d:high_sd %d:vhigh_frac %d:vhigh_av %d:vhigh_sd\n", i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i);
+  //fprintf(as->f, "overlap left_buckets right_buckets base_blocks extra_blocks vlow_frac vlow_av vlow_sd low_frac low_av low_sd high_frac high_av high_sd vhigh_frac vhigh_av vhigh_sd\n");
 
   as->numExtraBlocks = 0;
 
   // make max size arrays for holding data points
   i = MAX_B_PER_SIDE * MAX_B_PER_SIDE * NUM_M_TRIALS;
-  vlow = (int *) calloc(i, sizeof (int));
-  low = (int *) calloc(i, sizeof (int));
-  high = (int *) calloc(i, sizeof (int));
-  vhigh = (int *) calloc(i, sizeof (int));
+  for (o = 0; o < 2; o++) {
+    vlow[o] = (int *) calloc(i, sizeof (int));
+    low[o] = (int *) calloc(i, sizeof (int));
+    high[o] = (int *) calloc(i, sizeof (int));
+    vhigh[o] = (int *) calloc(i, sizeof (int));
+  }
 
   // make victim
   vbp = makeRandomBucketFromList(1, userList);
@@ -635,7 +654,9 @@ measureClusters(bucket *userList, attack_setup *as)
       as->numBaseBlocks = i;
       for (k = 0; k < 5; k += 2) {
         as->numExtraBlocks = k;
-        vlow_index=0, low_index=0, high_index=0, vhigh_index=0;
+        for (o = 0; o < 2; o++) {
+          vlow_index[o]=0, low_index[o]=0, high_index[o]=0, vhigh_index[o]=0;
+        }
         for (j = 0; j < NUM_M_TRIALS; j++) {
           initCluster(&mc);
           baseBlocks = as->numBaseBlocks + 
@@ -664,20 +685,22 @@ measureClusters(bucket *userList, attack_setup *as)
               for (s2 = s1; s2 < 2; s2++) {
                 for (b2 = b1; b2 < mc.numBuckets[s2]; b2++) {
                   if ((s1 == s2) && (b1 == b2)) { continue; }
+                  o = bucketsHaveACommonBlock(&(mc.bucket[s1][b1]), 
+                                                    &(mc.bucket[s2][b2]));
                   compareFullFilters(mc.bucket[s1][b1].bp, 
                                                 mc.bucket[s2][b2].bp, &c);
                   overlap = (int) ((float) c.overlap * (float) 1.5625);
                   if (overlap < 20) {
-                    vlow[vlow_index++] = overlap;
+                    vlow[o][vlow_index[o]++] = overlap;
                   }
                   else if (overlap < 50) {
-                    low[low_index++] = overlap;
+                    low[o][low_index[o]++] = overlap;
                   }
                   else if (overlap < 80) {
-                    high[high_index++] = overlap;
+                    high[o][high_index[o]++] = overlap;
                   }
                   else {
-                    vhigh[vhigh_index++] = overlap;
+                    vhigh[o][vhigh_index[o]++] = overlap;
                   }
                 }
               }
@@ -694,18 +717,25 @@ measureClusters(bucket *userList, attack_setup *as)
         }
         printMtmCluster(&mc);
         // report the results
-        getStatsInt(&vlowS, vlow, vlow_index);
-        getStatsInt(&lowS, low, low_index);
-        getStatsInt(&highS, high, high_index);
-        getStatsInt(&vhighS, vhigh, vhigh_index);
-        total = vlow_index + low_index + high_index + vhigh_index;
-        fprintf(as->f, "%d %d %d %d %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f\n",
-           as->numLeftBuckets, as->numRightBuckets, as->numBaseBlocks,
-           as->numExtraBlocks,
-           (float)((float)vlow_index/(float)total), vlowS.av, vlowS.sd,
-           (float)((float)low_index/(float)total), lowS.av, lowS.sd,
-           (float)((float)high_index/(float)total), highS.av, highS.sd,
-           (float)((float)vhigh_index/(float)total), vhighS.av, vhighS.sd);
+        total = vlow_index[0]+low_index[0]+high_index[0]+vhigh_index[0]+
+                vlow_index[1]+low_index[1]+high_index[1]+vhigh_index[1];
+        for (o = 0; o < 2; o++) {
+          getStatsInt(&vlowS[o], vlow[o], vlow_index[o]);
+          getStatsInt(&lowS[o], low[o], low_index[o]);
+          getStatsInt(&highS[o], high[o], high_index[o]);
+          getStatsInt(&vhighS[o], vhigh[o], vhigh_index[o]);
+          fprintf(as->f, "%d %d %d %d %d %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f\n",
+                   o, as->numLeftBuckets, as->numRightBuckets, 
+                   as->numBaseBlocks, as->numExtraBlocks,
+                   (float)((float)vlow_index[o]/(float)total), 
+                   vlowS[o].av, vlowS[o].sd,
+                   (float)((float)low_index[o]/(float)total), 
+                   lowS[o].av, lowS[o].sd,
+                   (float)((float)high_index[o]/(float)total), 
+                   highS[o].av, highS[o].sd,
+                   (float)((float)vhigh_index[o]/(float)total), 
+                   vhighS[o].av, vhighS[o].sd);
+        }
       }
     }
   }

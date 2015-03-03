@@ -344,7 +344,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
     overlapHistogram[ohist]++;
     if ((as->defense >= MtM_DEFENSE) && (overlap > WEAK_MATCH_THRESHOLD)) {
       // this is a candidate for an MtM attack.  store for later.
-      LIST_INSERT_HEAD(&head, bp1, mtm_list);
+      //LIST_INSERT_HEAD(&head, bp1, mtm_list);
     }
     if (overlap > NEAR_MATCH_THRESHOLD) {
       // filters suggest that there is a lot of overlap
@@ -383,6 +383,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
     // attack scenario exists (this I admit is a bit nasty.  It means
     // that we really need to store the full buckets, at least for a
     // while, and process them.)
+/*
     for (lbp = head.lh_first; lbp != NULL; lbp = lbp->mtm_list.le_next) {
       for (rbp = head.lh_first; rbp != NULL; rbp = rbp->mtm_list.le_next) {
         if (rbp == lbp) {continue;}
@@ -394,6 +395,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
       printf("%p\n", head.lh_first);
       LIST_REMOVE(head.lh_first, mtm_list);
     }
+*/
   }
 
   return(adjustment);
