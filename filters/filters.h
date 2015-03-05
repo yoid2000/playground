@@ -65,12 +65,8 @@ typedef struct child_comb_t {
   bucket *cbp;
 } child_comb;
 
-#define MAX_CLUSTER_BUCKETS 16
-typedef struct cluster_t {
-  bucket *buckets[MAX_CLUSTER_BUCKETS];
-} cluster;
-
+// following unused for now...just some test code
 typedef struct bucket_list_t {
-  cluster *cp;
+  bucket *bp;
   LIST_ENTRY(bucket_list_t) clist;
 } bucket_list;

@@ -17,11 +17,11 @@ for SIDE in $ALL_RIGHT # $ALL_LEFT
 do
 for RIGHT in 2
 do
-for LEFT in 1
+for LEFT in 2
 do
-for VIC in $ATT_YES # $ATT_NO
+for VIC in $ATT_YES $ATT_NO
 do
-for SAMP in 40 # 80
+for SAMP in 10 20 40 80
 do
  ./runAttacks -l $LEFT -r $RIGHT -d $D_MTO -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 80 -s $SAMP -t $VIC -B 0 -E 0 -L 0 -R 0 -e 1 $OUTDIR 
 done
