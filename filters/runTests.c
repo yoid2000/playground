@@ -28,7 +28,8 @@ main()
   // test_childCombIterator();
   // runCompareFullFiltersSpeedTests();
   // test_getNonOverlap3();
-  test_linkedList();
+  // test_linkedList();
   // test_defineBlocks();
   // test_defineCluster();
+  measureLowOverlapBuckets();
 }

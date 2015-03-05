@@ -6,11 +6,13 @@
 #include <math.h>
 #include "./filters.h"
 #include "./attacks.h"
+#include "./utilities.h"
 
 // externs needed to keep compiler from warning
 extern bucket *makeRandomBucket(int arg1);
 extern bucket *makeBucket(int arg1);
 extern int exceedsNoisyThreshold(float arg1, float arg2, float arg3);
+extern float getRandFloat(float arg1, float arg2);
 
 /* 
  * Allocates memory for a bucket of size bsize.
@@ -575,23 +577,6 @@ addOneExtraBlock(mtm_cluster *mc, int block)
   mc->bucket[RIGHT][b].numBlocks++;
 }
 
-/*
- *  This routine adds each unique extra block once.
- */
-addExtraBlocks(mtm_cluster *mc, int numBlocks, int block)
-{
-  int i;
-
-  for (i = 0; i < numBlocks; i++) {
-    addOneExtraBlock(mc, block++);
-    if (checkClusterProperties(mc) != NO_ERROR) {
-      printf("addExtraBlocks() ERROR, block %d\n", block);
-      printMtmCluster(mc);
-      exit(1);
-    }
-  }
-}
-
 initMtmBucket(mtm_bucket *mb)
 {
   int j;
@@ -741,7 +726,7 @@ fullClusterDefined(mtm_cluster *mc, int last_bn, attack_setup *as)
     if (++bn >= last_bn) {
       roundNum++;
       bn = 0;
-      if (roundNum > (5 * (last_bn + as->numExtraBlocks) *
+      if (roundNum > (5 * last_bn *
                         as->numLeftBuckets * as->numRightBuckets)) {
         return(0);
       }
@@ -756,7 +741,6 @@ fullClusterDefined(mtm_cluster *mc, int last_bn, attack_setup *as)
       }
     }
   }
-  addExtraBlocks(mc, as->numExtraBlocks, last_bn);
   return(1);
 }
 
@@ -927,6 +911,50 @@ getFirstChildComb(child_comb *c,
 
 /*********** TESTS **********/
 
+// this test measures the difference in overlap between
+// 10%, 5%, and 0% overlap buckets.
+measureLowOverlapBuckets()
+{
+  int i, j;
+  int bsize1, bsize2;
+  bucket *bp1, *bp2;
+  int stats[4][10000];
+  int overlap[4];
+  mystats S;
+  compare c;
+  float sizeRatio;
+  int absNumOverlap;
+
+  overlap[0] = 0;
+  overlap[1] = 1;
+  overlap[2] = 5;
+  overlap[3] = 10;
+
+  for (i = 0; i < 4; i++) {
+    for (j = 0; j < 10000; j++) {
+      bsize1 = getRandInteger(100, 200);
+      sizeRatio = getRandFloat((float)1.05,(float)1.2);
+      bsize2 = (int) ((float) bsize1 * sizeRatio);
+
+      bp1 = makeRandomBucket(bsize1);
+      bp2 = makeRandomBucket(bsize2);
+      // bsize1 must be the smaller bucket
+      absNumOverlap = (int) ((float) (bsize1 * overlap[i]) / (float) 100.0);
+      makeCompareBucketFixed(bp1, bp2, absNumOverlap);
+
+      makeFilterFromBucket(bp1);
+      makeFilterFromBucket(bp2);
+      compareFullFilters(bp1, bp2, &c);
+      stats[i][j] = (int) ((float) c.overlap * (float) 1.5625);
+    }
+  }
+  for (i = 0; i < 4; i++) {
+    getStatsInt(&S, stats[i], 10000);
+    printf("Overlap %d: av:%.2f, sd:%.2f, min:%.2f, max:%.2f\n",
+               i, S.av, S.sd, S.min, S.max);
+  }
+}
+
 makeOneChange(mtm_cluster *mc)
 {
   int s, b, a, nb;
@@ -959,7 +987,6 @@ test_defineCluster()
   as.numRightBuckets = 2;
   as.numBaseBlocks = 0;
   nbb = 4;
-  as.numExtraBlocks = 0;
   if (defineCluster(&mc, nbb, &as) != 1) {fn = 100; goto fail;}
   makeOneChange(&mc);
   if ((ret = checkClusterProperties(&mc)) == 0) {fn = 200+ret; goto fail;}
@@ -1011,7 +1038,6 @@ test_defineCluster()
     as.numRightBuckets = getRandInteger(2,5);
     as.numBaseBlocks = getRandInteger(0,3);
     nbb = as.numBaseBlocks + as.numLeftBuckets + as.numRightBuckets - 1;
-    as.numExtraBlocks = getRandInteger(0,3);
     if (defineCluster(&mc, nbb, &as) != 1) {
       fn = 10000+i; 
       printf("Failed with left %d, right %d, base %d\n",

@@ -155,8 +155,7 @@ makeChaffBuckets(bucket *userList, attack_setup *as) {
 int
 worstCaseBlocks(attack_setup *as)
 {
-  return(as->numBaseBlocks + as->numExtraBlocks +
-                        as->maxLeftBuckets + as->maxRightBuckets - 1);
+  return(as->numBaseBlocks + as->maxLeftBuckets + as->maxRightBuckets - 1);
 }
 
 int
@@ -259,9 +258,8 @@ oneAttack(int numSamples,
       exit(1);
     }
 
-    if ((baseBlocks + as->numExtraBlocks) > MAX_NUM_BLOCKS) {
-      printf("oneAttack ERROR3 %d, %d\n",  
-                     baseBlocks, as->numExtraBlocks);
+    if (baseBlocks > MAX_NUM_BLOCKS) {
+      printf("oneAttack ERROR3 %d\n",  baseBlocks);
       exit(1);
     }
 
@@ -404,7 +402,6 @@ printAttackSetup(attack_setup *as)
   fprintf(as->f, " numRounds %d\n", as->numRounds);
   fprintf(as->f, " numSamples %d\n", as->numSamples);
   fprintf(as->f, " numBaseBlocks %d\n", as->numBaseBlocks);
-  fprintf(as->f, " numExtraBlocks %d\n", as->numExtraBlocks);
 }
 
 printCommandLines(attack_setup *as)
@@ -478,7 +475,6 @@ main(int argc, char *argv[])
   as.numRounds = 20;
   as.numSamples = 10;
   as.numBaseBlocks = 0;
-  as.numExtraBlocks = 0;   
   as.minLeftBuckets = 2;   
   as.maxLeftBuckets = 0;   // set same as minLeftBuckets
   as.minRightBuckets = 2;   
@@ -486,7 +482,7 @@ main(int argc, char *argv[])
   as.numLeftBuckets = 0;     // gets set later
   as.numRightBuckets = 0;     // gets set later
 
-  while ((c = getopt (argc, argv, "l:L:r:R:E:B:a:d:o:v:t:c:m:x:a:s:e:h?")) != -1) {
+  while ((c = getopt (argc, argv, "l:L:r:R:B:a:d:o:v:t:c:m:x:a:s:e:h?")) != -1) {
     sprintf(temp, "%c%s", c, optarg);
     strcat(filename, temp);
     switch (c) {
@@ -501,9 +497,6 @@ main(int argc, char *argv[])
         break;
       case 'R':
         as.maxRightBuckets = atoi(optarg);
-        break;
-      case 'E':
-        as.numExtraBlocks = atoi(optarg);
         break;
       case 'B':
         as.numBaseBlocks = atoi(optarg);
@@ -604,8 +597,6 @@ bucketsHaveACommonBlock(mtm_bucket *b1, mtm_bucket *b2)
   return(WITHOUT_OVERLAP);
 }
 
-
-
 #define NUM_M_TRIALS 100
 #define MIN_B_PER_SIDE 2
 #define MAX_B_PER_SIDE 4
@@ -627,9 +618,7 @@ measureClusters(bucket *userList, attack_setup *as)
 
   i = 0;
   fprintf(as->f, "%d:overlap %d:left_buckets %d:right_buckets %d:base_blocks %d:extra_blocks %d:vlow_frac %d:vlow_av %d:vlow_sd %d:low_frac %d:low_av %d:low_sd %d:high_frac %d:high_av %d:high_sd %d:vhigh_frac %d:vhigh_av %d:vhigh_sd\n", i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i++, i);
-  //fprintf(as->f, "overlap left_buckets right_buckets base_blocks extra_blocks vlow_frac vlow_av vlow_sd low_frac low_av low_sd high_frac high_av high_sd vhigh_frac vhigh_av vhigh_sd\n");
-
-  as->numExtraBlocks = 0;
+  fflush(as->f);
 
   // make max size arrays for holding data points
   i = MAX_B_PER_SIDE * MAX_B_PER_SIDE * NUM_M_TRIALS;
@@ -652,81 +641,79 @@ measureClusters(bucket *userList, attack_setup *as)
     as->numRightBuckets = numBuckets;
     for (i = 0; i < 5; i += 2) {
       as->numBaseBlocks = i;
-      for (k = 0; k < 5; k += 2) {
-        as->numExtraBlocks = k;
-        for (o = 0; o < 2; o++) {
-          vlow_index[o]=0, low_index[o]=0, high_index[o]=0, vhigh_index[o]=0;
-        }
-        for (j = 0; j < NUM_M_TRIALS; j++) {
-          initCluster(&mc);
-          baseBlocks = as->numBaseBlocks + 
-                     as->numLeftBuckets + as->numRightBuckets - 1;
-          block_array = defineBlocks(1, worstCaseBlocks(as), &lastBlock);
+      for (o = 0; o < 2; o++) {
+        vlow_index[o]=0, low_index[o]=0, high_index[o]=0, vhigh_index[o]=0;
+      }
+      for (j = 0; j < NUM_M_TRIALS; j++) {
+        initCluster(&mc);
+        baseBlocks = as->numBaseBlocks + 
+                   as->numLeftBuckets + as->numRightBuckets - 1;
+        block_array = defineBlocks(1, worstCaseBlocks(as), &lastBlock);
 
 
-          makeClusterAndBuckets(&mc, as, vbp, userList, block_array,
-                                              baseBlocks, 0, 1);
+        makeClusterAndBuckets(&mc, as, vbp, userList, block_array,
+                                            baseBlocks, 0, 1);
 
-          // this shouldn't influence the measurements much, but go ahead
-          // and add the victim to one arbitrary bucket
-          temp = combineBuckets(mc.bucket[RIGHT][0].bp, vbp);
-          freeBucket(mc.bucket[RIGHT][0].bp); mc.bucket[RIGHT][0].bp = temp;
+        // this shouldn't influence the measurements much, but go ahead
+        // and add the victim to one arbitrary bucket
+        temp = combineBuckets(mc.bucket[RIGHT][0].bp, vbp);
+        freeBucket(mc.bucket[RIGHT][0].bp); mc.bucket[RIGHT][0].bp = temp;
 
-          // make digests
-          for (s1 = 0; s1 < 2; s1++) {
-            for (b1 = 0; b1 < mc.numBuckets[s1]; b1++) {
-              makeFilterFromBucket(mc.bucket[s1][b1].bp);
-            }
+        // make digests
+        for (s1 = 0; s1 < 2; s1++) {
+          for (b1 = 0; b1 < mc.numBuckets[s1]; b1++) {
+            makeFilterFromBucket(mc.bucket[s1][b1].bp);
           }
+        }
 
-          // measure overlap between all pairs of buckets
-          for (s1 = 0; s1 < 2; s1++) {
-            for (b1 = 0; b1 < mc.numBuckets[s1]; b1++) {
-              for (s2 = s1; s2 < 2; s2++) {
-                for (b2 = b1; b2 < mc.numBuckets[s2]; b2++) {
-                  if ((s1 == s2) && (b1 == b2)) { continue; }
-                  o = bucketsHaveACommonBlock(&(mc.bucket[s1][b1]), 
-                                                    &(mc.bucket[s2][b2]));
-                  compareFullFilters(mc.bucket[s1][b1].bp, 
-                                                mc.bucket[s2][b2].bp, &c);
-                  overlap = (int) ((float) c.overlap * (float) 1.5625);
-                  if (overlap < 20) {
-                    vlow[o][vlow_index[o]++] = overlap;
-                  }
-                  else if (overlap < 50) {
-                    low[o][low_index[o]++] = overlap;
-                  }
-                  else if (overlap < 80) {
-                    high[o][high_index[o]++] = overlap;
-                  }
-                  else {
-                    vhigh[o][vhigh_index[o]++] = overlap;
-                  }
+        // measure overlap between all pairs of buckets
+        for (s1 = 0; s1 < 2; s1++) {
+          for (b1 = 0; b1 < mc.numBuckets[s1]; b1++) {
+            for (s2 = s1; s2 < 2; s2++) {
+              for (b2 = b1; b2 < mc.numBuckets[s2]; b2++) {
+                if ((s1 == s2) && (b1 == b2)) { continue; }
+                o = bucketsHaveACommonBlock(&(mc.bucket[s1][b1]), 
+                                                  &(mc.bucket[s2][b2]));
+                compareFullFilters(mc.bucket[s1][b1].bp, 
+                                              mc.bucket[s2][b2].bp, &c);
+                overlap = (int) ((float) c.overlap * (float) 1.5625);
+                if (overlap < 20) {
+                  vlow[o][vlow_index[o]++] = overlap;
+                }
+                else if (overlap < 50) {
+                  low[o][low_index[o]++] = overlap;
+                }
+                else if (overlap < 80) {
+                  high[o][high_index[o]++] = overlap;
+                }
+                else {
+                  vhigh[o][vhigh_index[o]++] = overlap;
                 }
               }
             }
           }
-          // free all the buckets etc.
-          for (s1 = 0; s1 < 2; s1++) {
-            for (b1 = 0; b1 < mc.numBuckets[s1]; b1++) {
-              freeBucket(mc.bucket[s1][b1].bp);
-              mc.bucket[s1][b1].bp = NULL;  // shouldn't be necessary...
-            }
-          }
-          free(block_array);
         }
-        printMtmCluster(&mc);
-        // report the results
-        total = vlow_index[0]+low_index[0]+high_index[0]+vhigh_index[0]+
-                vlow_index[1]+low_index[1]+high_index[1]+vhigh_index[1];
-        for (o = 0; o < 2; o++) {
-          getStatsInt(&vlowS[o], vlow[o], vlow_index[o]);
-          getStatsInt(&lowS[o], low[o], low_index[o]);
-          getStatsInt(&highS[o], high[o], high_index[o]);
-          getStatsInt(&vhighS[o], vhigh[o], vhigh_index[o]);
-          fprintf(as->f, "%d %d %d %d %d %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f\n",
+        // free all the buckets etc.
+        for (s1 = 0; s1 < 2; s1++) {
+          for (b1 = 0; b1 < mc.numBuckets[s1]; b1++) {
+            freeBucket(mc.bucket[s1][b1].bp);
+            mc.bucket[s1][b1].bp = NULL;  // shouldn't be necessary...
+          }
+        }
+        free(block_array);
+      }
+      printMtmCluster(&mc);
+      // report the results
+      total = vlow_index[0]+low_index[0]+high_index[0]+vhigh_index[0]+
+              vlow_index[1]+low_index[1]+high_index[1]+vhigh_index[1];
+      for (o = 0; o < 2; o++) {
+        getStatsInt(&vlowS[o], vlow[o], vlow_index[o]);
+        getStatsInt(&lowS[o], low[o], low_index[o]);
+        getStatsInt(&highS[o], high[o], high_index[o]);
+        getStatsInt(&vhighS[o], vhigh[o], vhigh_index[o]);
+        fprintf(as->f, "%d %d %d %d %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f\n",
                    o, as->numLeftBuckets, as->numRightBuckets, 
-                   as->numBaseBlocks, as->numExtraBlocks,
+                   as->numBaseBlocks,
                    (float)((float)vlow_index[o]/(float)total), 
                    vlowS[o].av, vlowS[o].sd,
                    (float)((float)low_index[o]/(float)total), 
@@ -735,7 +722,7 @@ measureClusters(bucket *userList, attack_setup *as)
                    highS[o].av, highS[o].sd,
                    (float)((float)vhigh_index[o]/(float)total), 
                    vhighS[o].av, vhighS[o].sd);
-        }
+        fflush(as->f);
       }
     }
   }

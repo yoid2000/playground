@@ -46,7 +46,6 @@ typedef struct attack_setup_t {
   char *attribute_str[NUM_ATTRIBUTES];
   int numBaseBlocks;    // number of blocks *beyond the minimum* 
                            // from which to build attack
-  int numExtraBlocks;   // number of extra blocks on each side
   int minLeftBuckets;   // min buckets on left side
   int maxLeftBuckets;   // max buckets on left side
   int numLeftBuckets;    // derived from min and max

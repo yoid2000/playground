@@ -6,6 +6,7 @@
 #include "./filters.h"
 #include "./hightouch.h"
 #include "./attacks.h"
+#include "./clusters.h"
 
 // externs needed to keep compiler from warning
 extern bucket *makeBucket(int arg1);
@@ -36,6 +37,15 @@ extern int countHighTouch(bucket *arg1);
 bucket **storedFilters;
 int sfIndex; 	// index into above list
 int maxSfIndex;
+/*
+ * Each entry to this 2D array is a index into storedFilters.
+ * The first dimension is cluster size.  In other words, a cluster
+ * with 7 buckets would go into cluster[7][x].  The first such
+ * cluster would be at position 0 (clusters[7][0], the second such
+ * cluster at position 7 (clusters[7][7]), and so on. 
+ */
+int clusters[LARGEST_CLUSTER][MOST_BUCKETS];
+int clusters_index[LARGEST_CLUSTER];
 
 #define MAX_TOUCH_COUNT 20
 int numTouches[MAX_TOUCH_COUNT];
@@ -55,9 +65,12 @@ float roundingBias;
 int numRounding;
 
 initDefense(int maxBuckets) {
+  int i;
+
   storedFilters = (bucket **) calloc(maxBuckets, sizeof(bucket *));
   sfIndex = 0;
   maxSfIndex = maxBuckets;
+  initClusters();
   // this hash table much bigger than needed
   initHighTouchTable();
 }
@@ -282,12 +295,29 @@ checkAllChildCombinations(bucket *pbp,     // parent
   return(adjustment);
 }
 
+/* NOTES:
+1.  Keep a list of hammers.  Look for 2x2 or 3x3 combinations, and
+    suppress.  Otherwise, if more than 80 or so hammers without
+    suppression, then block.  (This may mean that if I suppress, I can
+    remove the corresponding hammers from the list.  But maybe no
+    real advantage from removing it.)
+2.  Keep a list of barbell/hammer (BH) triples.  Look for BH 3x3
+    attacks, and for BH+H 3x2 attacks.  As far as I know, bigger
+    combinations cannot be made out of BH triples.  Need to confirm.
+3.  Keep lists of various sized clusters.  Look for 2x2 attacks.
+    If a 2x2 is found (and suppression occurs, probably), then that
+    particular 2x2 does not grow into a larger cluster.  However, each
+    bucket of the 2x2 can be involved in other clusters.
+    If more than 50 or so buckets involved in clusters
+    of size 5 or greater, then block.
+*/
+
 // A NEAR_MATCH_THRESHOLD of 90 was failing with high numbers of
 // children (i.e. 5), because a single match would be missed on most
 // clusters.  So we've lowered the threshold to 80.  85 would probably
 // be ok in practice too, but this requires more experimentation.
 #define NEAR_MATCH_THRESHOLD 80
-#define WEAK_MATCH_THRESHOLD 30
+#define WEAK_MATCH_THRESHOLD 20
 #define LOW_COUNT_SOFT_THRESHOLD 5
 #define LOW_COUNT_HARD_THRESHOLD 1
 #define LOW_COUNT_SD 1
@@ -306,7 +336,6 @@ checkAllChildCombinations(bucket *pbp,     // parent
 int
 putBucketDefend(bucket *bp, attack_setup *as) 
 {
-  LIST_HEAD(listhead, bucket_t) head;
   int i, j, overlap, ohist;
   compare c;
   bucket *bp1, *lbp, *rbp;
@@ -325,11 +354,6 @@ putBucketDefend(bucket *bp, attack_setup *as)
     exit(1);
   }
 
-  if (as->defense >= MtM_DEFENSE) {
-    // initialize list of medium overlap buckets
-    LIST_INIT(&head);
-  }
-
   childAdded = 0;
   for (i = 0; i < j; i++) {
     numComparisons++;
@@ -344,7 +368,6 @@ putBucketDefend(bucket *bp, attack_setup *as)
     overlapHistogram[ohist]++;
     if ((as->defense >= MtM_DEFENSE) && (overlap > WEAK_MATCH_THRESHOLD)) {
       // this is a candidate for an MtM attack.  store for later.
-      //LIST_INSERT_HEAD(&head, bp1, mtm_list);
     }
     if (overlap > NEAR_MATCH_THRESHOLD) {
       // filters suggest that there is a lot of overlap
@@ -377,25 +400,6 @@ putBucketDefend(bucket *bp, attack_setup *as)
     if (childAdded) {
       adjustment += checkAllChildCombinations(bp, NULL);
     }
-  }
-  if (as->defense >= MtM_DEFENSE) {
-    // go through each pair of overlapping buckets, and see if an MtM
-    // attack scenario exists (this I admit is a bit nasty.  It means
-    // that we really need to store the full buckets, at least for a
-    // while, and process them.)
-/*
-    for (lbp = head.lh_first; lbp != NULL; lbp = lbp->mtm_list.le_next) {
-      for (rbp = head.lh_first; rbp != NULL; rbp = rbp->mtm_list.le_next) {
-        if (rbp == lbp) {continue;}
-// zzzz
-      }
-    }
-    // clean out the linked list
-    while (head.lh_first != NULL) {
-      printf("%p\n", head.lh_first);
-      LIST_REMOVE(head.lh_first, mtm_list);
-    }
-*/
   }
 
   return(adjustment);
