@@ -44,6 +44,7 @@ typedef struct attack_setup_t {
   char *location_str[NUM_VICTIM_LOC];
   int location;
   char *attribute_str[NUM_ATTRIBUTES];
+  int usersPerBucket;    // target number of users per bucket
   int numBaseBlocks;    // number of blocks *beyond the minimum* 
                            // from which to build attack
   int minLeftBuckets;   // min buckets on left side
@@ -52,7 +53,6 @@ typedef struct attack_setup_t {
   int minRightBuckets;   // min buckets on right side
   int maxRightBuckets;    // max buckets on right side 
   int numRightBuckets;    // derived from min and max
-  int numChildren;   // for OtM attack
   int chaffMax;
   int chaffMin;
   int numRounds;  // number of attack repeats 
@@ -69,8 +69,8 @@ typedef struct blocks_t {
   int childNum;
 } blocks;
 
-#define MAX_NUM_BLOCKS 16    // base and extra
-#define MAX_NUM_BUCKETS_PER_SIDE 16
+#define MAX_NUM_BLOCKS 32
+#define MAX_NUM_BUCKETS_PER_SIDE 32
 #define NO_BLOCK 0x7fffffff;
 
 typedef struct mtm_bucket_t {

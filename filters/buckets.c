@@ -385,14 +385,22 @@ makeRandomBucketFromList(int bsize, bucket *userList)
 {
   int i, index;
   unsigned int *lp;
+  unsigned int user_id;
   bucket *bp;
+  unsigned char str[64];
 
   bp = makeBucket(bsize);
   lp = bp->list;
 
   for (i = 0; i < bsize; i++) {
     index = getRandInteger(0, (userList->bsize-1));
-    *lp = userList->list[index];
+    // since in real situation attacker may be using something other than
+    // user id for the attack, lets hash this to emulate that
+    sprintf(str, "%d", userList->list[index]);
+    // for testing purposes only:
+    user_id = userList->list[index];
+    // user_id = (unsigned int) quick_hash(str);
+    *lp = user_id;
     lp++;
   }
   return(bp);
@@ -762,19 +770,55 @@ defineCluster(mtm_cluster *mc, int baseBlocks, attack_setup *as)
   return(0);
 }
 
+/*
+ *  A perfect cluster has the same number of buckets on both sides,
+ *  the number of blocks is equal to the number of buckets squared,
+ *  each block appears in each bucket once (per side), and each bucket
+ *  overlaps with other side buckets on exactly one block.  This
+ *  minimizes overlap (making it hard to detect).
+ */
+definePerfectCluster(mtm_cluster *mc, attack_setup *as)
+{
+  int i, j, nb, b;
+
+  if (as->numLeftBuckets != as->numRightBuckets) {
+    printf("definePerfectCluster() ERROR mismatched sides (%d, %d)\n", 
+                                 as->numLeftBuckets, as->numRightBuckets);
+    exit(1);
+  }
+  nb = as->numLeftBuckets;
+  if ((nb > MAX_NUM_BUCKETS_PER_SIDE) || (nb > MAX_NUM_BLOCKS)) {
+    printf("definePerfectCluster() ERROR excess blocks/buckets (%d)\n", nb);
+    exit(1);
+  }
+  mc->numBuckets[LEFT] = nb;
+  mc->numBuckets[RIGHT] = nb;
+
+  b = 0;
+  for (i = 0; i < nb; i++) {
+    mc->bucket[LEFT][i].numBlocks = nb;
+    mc->bucket[RIGHT][i].numBlocks = nb;
+    for (j = 0; j < nb; j++) {
+      mc->bucket[LEFT][i].blocks[j] = b;
+      mc->bucket[RIGHT][j].blocks[i] = b;  // i,j swapped on purpose
+      b++;
+    }
+  }
+}
+
 bucket *
 makeSegregatedBucketFromList(int mask, 
-                             int sampleShift,
-                             int max_bsize, 
                              int sampleNum,
-                             int childNum,
+                             int max_bsize,
                              unsigned int victim,
                              bucket *userList, 
                              int userListSize)
 {
-  int value, i, bsize=0;
+  int i, bsize=0;
   unsigned int *lp;
+  unsigned int user_id;
   bucket *bp;
+  unsigned char str[64];
 
   bp = makeBucket(max_bsize);
   lp = bp->list;
@@ -785,10 +829,15 @@ makeSegregatedBucketFromList(int mask,
                                                            bsize, max_bsize);
       exit(1);
     }
-    value = (sampleNum << sampleShift) | childNum;
     if ((userList->list[i] != victim) && 
-        ((userList->list[i] & mask) == value)) {
-      *lp = userList->list[i];
+        ((userList->list[i] & mask) == sampleNum)) {
+      // since in real situation attacker may be using something other than
+      // user id for the attack, lets hash this to emulate that
+      sprintf(str, "%d", userList->list[i]);
+      // for testing purposes only:
+      user_id = userList->list[i];
+      // user_id = (unsigned int) quick_hash(str);
+      *lp = user_id;
       lp++;
       bsize++;
     }
@@ -951,7 +1000,7 @@ measureLowOverlapBuckets()
   for (i = 0; i < 4; i++) {
     getStatsInt(&S, stats[i], 10000);
     printf("Overlap %d: av:%.2f, sd:%.2f, min:%.2f, max:%.2f\n",
-               i, S.av, S.sd, S.min, S.max);
+               overlap[i], S.av, S.sd, S.min, S.max);
   }
 }
 
