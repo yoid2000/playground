@@ -412,7 +412,7 @@ printCommandLines(attack_setup *as)
 {
   int i;
 
-  printf("Usage: ./runAttacks -l min_left -r min_right -L max_left -R max_right -d defense -o victim_order -v victim_location -t victim_attribute -m min_chaff -x max_chaff -a num_rounds -s num_samples -e seed -B num_base_blocks_past_min -E num_extra_blocks <directory>\n ");
+  printf("Usage: ./runAttacks -l min_left -r min_right -L max_left -R max_right -d defense -o victim_order -v victim_location -t victim_attribute -m min_chaff -x max_chaff -a num_rounds -s num_samples -e seed -B num_base_blocks_past_min -u user_per_bucket <directory>\n ");
   printf("     defense values:\n");
   for (i = 0; i < NUM_DEFENSES; i++) {
     printf("          %d = %s\n", i, as->defense_str[i]);
@@ -435,7 +435,7 @@ printCommandLines(attack_setup *as)
   printf("     seed:  any integer\n");
   
   printf("     num_base_blocks_past_min >= 0\n");
-  printf("     num_extra_blocks >= 0\n");
+  printf("     users_per_bucket > 0\n");
   printf("     min_left >= 1\n");
   printf("     max_left >= min_left (0 means same as min)\n");
   printf("     min_right >= 1\n");
@@ -583,9 +583,9 @@ main(int argc, char *argv[])
 
   printAttackSetup(&as);
 
-  measureClusters(userList, &as); exit(1);
+  //measureClusters(userList, &as); exit(1);
   //test_getSegregateMask(userList); exit(1);
-  //runAttack(userList, &as);
+  runAttack(userList, &as);
   printf("Done: %s\n", filename);
 }
 
@@ -720,11 +720,18 @@ measureClusters(bucket *userList, attack_setup *as)
     as->numLeftBuckets = numBuckets;
     as->numRightBuckets = numBuckets;
     for (i = 0; i <= 2; i++) {
-      as->numBaseBlocks = (int) pow((float) numBuckets, (float) i) -
+      if (i == 0) {as->numBaseBlocks = 0;}
+      else if (i == 1) {as->numBaseBlocks = numBuckets;}
+      else if (i == 2) {
+        as->numBaseBlocks = (int) pow((float) numBuckets, (float) i) -
                              as->numLeftBuckets - as->numRightBuckets + 1;
-      if (as->numBaseBlocks < 0) as->numBaseBlocks = 0;
+      }
       for (p = 0; p < 2; p++) {
-        for (size = 100; size <= 800; size *= 2) {
+        for (size = 50; size <= 400; size *= 2) {
+          if (((float)(size * numBuckets) / (float)as->numBaseBlocks) < 5.0) {
+            // would produce empty buckets...
+            continue;
+          }
           as->usersPerBucket = size;
           if ((p == 1) && i != 2) { continue; }
           // make perfect cluster if p == 1
@@ -814,7 +821,7 @@ measureClusters(bucket *userList, attack_setup *as)
             getStatsInt(&lowS[o], low[o], low_index[o]);
             getStatsInt(&highS[o], high[o], high_index[o]);
             getStatsInt(&vhighS[o], vhigh[o], vhigh_index[o]);
-            fprintf(as->f, "%d %d %d %4d %3d %d    %.2f %02.2f %.2f    %.2f %02.2f %.2f     %.2f %02.2f %.2f     %.2f %02.2f %.2f\n",
+            fprintf(as->f, "%d %d %d %4d %3d %d    %.2f %.2f %.2f    %.2f %.2f %.2f     %.2f %.2f %.2f     %.2f %.2f %.2f\n",
                        p, o, as->numLeftBuckets, as->numRightBuckets, 
                        as->usersPerBucket, as->numBaseBlocks,
                        (float)((float)vlow_index[o]/(float)total), 
