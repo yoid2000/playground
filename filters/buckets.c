@@ -887,6 +887,16 @@ printBucket(bucket* bp)
   }
 }
 
+
+bucket *
+removeChildComb(child_comb *c, 
+                  bucket *pbp,   // parent
+                  bucket *cbp,   // child (if new bucket is child)
+                  bucket **sf,
+                  int sfMax)
+{
+}
+
 bucket *
 getNextChildComb(child_comb *c, 
                   bucket *pbp,   // parent

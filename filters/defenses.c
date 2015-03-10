@@ -121,17 +121,25 @@ computeDefenseStats(int numRounds, attack_setup *as)
            (float)((float)numPutBuckets/(float)numRounds), 
            (float)((float)numLowCount/(float)numRounds), 
            (float)((float)numComparisons/(float)numRounds));
+    if (numComparisons != 0) {
     fprintf(as->f, "%.2f (%d%%) past digest\n", 
            (float)((float)numPastDigest/(float)numRounds), 
             (int)((float)(numPastDigest*100)/(float) numComparisons));
+    }
+    if (numPastDigest != 0) {
     fprintf(as->f, "%.2f (%d%%) close sizes\n", 
            (float)((float)numCloseSize/(float)numRounds), 
             (int)((float)(numCloseSize*100)/(float) numPastDigest));
+    }
+    if (numCloseSize != 0) {
     fprintf(as->f, "%.2f (%d%%) small overlaps\n", 
            (float)((float)numSmallOverlap/(float)numRounds), 
             (int)((float)(numSmallOverlap*100)/(float) numCloseSize));
+    }
+    if (numSmallOverlap != 0) {
     fprintf(as->f, "Average %.2f adjusted users per checked bucket\n",
             (float)((float)numAdjust/(float) numSmallOverlap));
+    }
     fprintf(as->f, "Biases: fixed: %.2f (%.2f, %d), rounding: %.2f (%.2f, %d)\n",
             (float)(fixedNoiseBias/(float) numFixedNoise),
             fixedNoiseBias, numFixedNoise,
@@ -192,10 +200,11 @@ computeNoisyCount(bucket *bp)
  * returns 0 otherwise
  */
 int
-checkNearMatchAndTouchNonOverlap(bucket *new_bp, bucket *old_bp)
+checkNearMatchAndTouchNonOverlap(bucket *new_bp, 
+                                 bucket *old_bp, 
+                                 int *adjustment)
 {
   bucket *old_nobp=NULL, *old_obp=NULL, *new_nobp=NULL, *new_obp=NULL;
-  int adjustment=0;
 
   if (sizesAreClose(new_bp, old_bp)) {
     // the exact bucket size (stored with the filter) provides
@@ -220,17 +229,20 @@ checkNearMatchAndTouchNonOverlap(bucket *new_bp, bucket *old_bp)
       touchNonOverlappingUsers(new_nobp);
       // The non-overlapping users in the former bucket might be attack
       // victims, so we "add" them to the new bucket to compensate
-      adjustment += countHighTouch(old_nobp);
+      *adjustment += countHighTouch(old_nobp);
       // The non-overlapping users in the new bucket might als be attack
       // victims, so we "remove" them from the new bucket to compensate
-      adjustment -= countHighTouch(new_nobp);
+      *adjustment -= countHighTouch(new_nobp);
       free(new_obp);
       free(old_obp);
       free(new_nobp);
       free(old_nobp);
+      return(1);
     }
+    // TODO:  We should be removing the children after we adjust
+    // for a given cluster....
   }
-  return(adjustment);
+  return(0);
 }
 
 addChildLink(bucket *parent, int child_index)
@@ -245,65 +257,70 @@ addChildLink(bucket *parent, int child_index)
 
 /*
  * bpb = parent, sbp = suppress
- * returns suppressed bucket sbp.  If returned sbp different than
- * calling sbp, then calling sbp will have been freed. 
+ * returns 1 if there was a near match, 0 otherwise
  */
 int
 checkAllChildCombinations(bucket *pbp,     // parent
-                          bucket *cbp)     // child, if new bucket is child
+                          bucket *cbp,     // child, if new bucket is child
+                          int *adjustment)     
 {
   bucket *cobp;
   child_comb c;
   bucket *nobp;
-  int adjustment=0;
+  int nearMatch = 0;
 
   if ((cobp = getFirstChildComb(&c, pbp, cbp, storedFilters, sfIndex)) 
                                                                 == NULL) {
     // not enough children, so done
-    return(adjustment);
+    return(0);
   }
   // In a real implementation, the sizes check would be made before
   // re-querying the buckets.  Here in this simulation, however,
   // getFirstChildComb() builds the composite bucket as well.
   if (cbp) {
     // new bucket is child
-    adjustment += checkNearMatchAndTouchNonOverlap(cobp, pbp);
+    nearMatch = checkNearMatchAndTouchNonOverlap(cobp, pbp, adjustment);
   }
   else {
     // new bucket is parent
-    adjustment += checkNearMatchAndTouchNonOverlap(pbp, cobp);
+    nearMatch = checkNearMatchAndTouchNonOverlap(pbp, cobp, adjustment);
   }
+  if (nearMatch == 1) { return(nearMatch); }
   // we keep checking even though we already found one child combination
   // there might be another....
   while (1) {
     if ((cobp = getNextChildComb(&c, pbp, cbp, storedFilters, sfIndex)) 
                                                                == NULL) {
-      break;
+      return(0);
     }
     // admittedly ugly that I'm repeating this code.  I don't think I
     // built the getFirstChildComb / getNextChildComb interface very
     // smartly...
     if (cbp) {
       // new bucket is child
-      adjustment += checkNearMatchAndTouchNonOverlap(cobp, pbp);
+      nearMatch = checkNearMatchAndTouchNonOverlap(cobp, pbp, adjustment);
     }
     else {
       // new bucket is parent
-      adjustment += checkNearMatchAndTouchNonOverlap(pbp, cobp);
+      nearMatch = checkNearMatchAndTouchNonOverlap(pbp, cobp, adjustment);
     }
+    if (nearMatch == 1) { return(nearMatch); }
   }
-  return(adjustment);
+  // we should never get here
+  printf("checkAllChildCombinations() ERROR\n");
+  exit(1);
 }
 
 /* NOTES:
-1.  Keep a list of hammers.  Look for 2x2 or 3x3 combinations, and
-    suppress.  Otherwise, if more than 80 or so hammers without
+1.  Keep a list of barbells.  Look for 2x2 or 3x3 combinations, and
+    suppress.  Otherwise, if more than 80 or so barbells without
     suppression, then block.  (This may mean that if I suppress, I can
-    remove the corresponding hammers from the list.  But maybe no
-    real advantage from removing it.)
-2.  Keep a list of barbell/hammer (BH) triples.  Look for BH 3x3
-    attacks, and for BH+H 3x2 attacks.  As far as I know, bigger
-    combinations cannot be made out of BH triples.  Need to confirm.
+    remove the corresponding barbells from the list.  But maybe no
+    real advantage from removing them.)
+2.  Keep a list of barbell/hammer (BH) triples (nunchuk).  Look for
+    3x3 double-nunchuk attacks, and 3x2 nunchuk-hammer attacks.
+    As far as I know, bigger combinations cannot be made out of nunchuks.  
+    Need to confirm.
 3.  Keep lists of various sized clusters.  Look for 2x2 attacks.
     If a 2x2 is found (and suppression occurs, probably), then that
     particular 2x2 does not grow into a larger cluster.  However, each
@@ -341,6 +358,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
   bucket *bp1, *lbp, *rbp;
   int childAdded;
   int adjustment=0;
+  int nearMatch;
 
   countUsers(bp);
 
@@ -360,14 +378,17 @@ putBucketDefend(bucket *bp, attack_setup *as)
     bp1 = storedFilters[i];
     compareFullFilters(bp1, bp, &c);
     overlap = (int) ((float) c.overlap * (float) 1.5625);
+    // the following just gathering statistics
     if ((ohist = (int) ((float) overlap / (float) 10)) > 
                                             MAX_OVERLAP_HISTOGRAM) {
       printf("putBucketDefend() ERROR bad ohist %d (%d)\n", ohist, overlap);
       exit(1);
     }
     overlapHistogram[ohist]++;
+
     if ((as->defense >= MtM_DEFENSE) && (overlap > WEAK_MATCH_THRESHOLD)) {
       // this is a candidate for an MtM attack.  store for later.
+// zzzz
     }
     if (overlap > NEAR_MATCH_THRESHOLD) {
       // filters suggest that there is a lot of overlap
@@ -376,7 +397,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
       //     bucket (composed of combinations of children), and check for
       //     sizes are close etc.
       // first check for OtO attack
-      adjustment += checkNearMatchAndTouchNonOverlap(bp, bp1);
+      nearMatch = checkNearMatchAndTouchNonOverlap(bp, bp1, &adjustment);
       if (as->defense >= MtO_DEFENSE) {
         // now deal with MtO attacks
         // add child link
@@ -389,7 +410,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
         else if (bp->bsize <= (bp1->bsize - LOW_COUNT_SOFT_THRESHOLD)) {
           // former bucket bp1 is a parent of new bucket pb,
           // check to see if this creates an attack tuple
-          adjustment += checkAllChildCombinations(bp1, bp);
+          nearMatch = checkAllChildCombinations(bp1, bp, &adjustment);
           // When new bucket is child, add link after checking combinations
           addChildLink(bp1, j);
         }
@@ -398,7 +419,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
   }
   if (as->defense >= MtO_DEFENSE) {
     if (childAdded) {
-      adjustment += checkAllChildCombinations(bp, NULL);
+      nearMatch = checkAllChildCombinations(bp, NULL, &adjustment);
     }
   }
 
