@@ -272,7 +272,7 @@ checkAllChildCombinations(bucket *pbp,     // parent
   if ((cobp = getFirstChildComb(&c, pbp, cbp, storedFilters, sfIndex)) 
                                                                 == NULL) {
     // not enough children, so done
-    return(0);
+    goto finished;
   }
   // In a real implementation, the sizes check would be made before
   // re-querying the buckets.  Here in this simulation, however,
@@ -285,13 +285,13 @@ checkAllChildCombinations(bucket *pbp,     // parent
     // new bucket is parent
     nearMatch = checkNearMatchAndTouchNonOverlap(pbp, cobp, adjustment);
   }
-  if (nearMatch == 1) { return(nearMatch); }
+  if (nearMatch == 1) { goto finished; }
   // we keep checking even though we already found one child combination
   // there might be another....
   while (1) {
     if ((cobp = getNextChildComb(&c, pbp, cbp, storedFilters, sfIndex)) 
                                                                == NULL) {
-      return(0);
+      goto finished;
     }
     // admittedly ugly that I'm repeating this code.  I don't think I
     // built the getFirstChildComb / getNextChildComb interface very
@@ -304,11 +304,19 @@ checkAllChildCombinations(bucket *pbp,     // parent
       // new bucket is parent
       nearMatch = checkNearMatchAndTouchNonOverlap(pbp, cobp, adjustment);
     }
-    if (nearMatch == 1) { return(nearMatch); }
+    if (nearMatch == 1) { goto finished; }
   }
-  // we should never get here
-  printf("checkAllChildCombinations() ERROR\n");
-  exit(1);
+finished:
+  if (nearMatch) {
+    // If we get a near match, then remove the matching children
+    // Note that if we don't remove the children, then the attacker
+    // could simply create lots of dummy children until the
+    // MAX_CHILDREN is reached, and then create the real children.
+    // In this case, we'd have to detect this and block the new children,
+    // which I'd rather not do
+    removeChildComb(&c, pbp);
+  }
+  return(nearMatch);
 }
 
 /* NOTES:
@@ -412,7 +420,12 @@ putBucketDefend(bucket *bp, attack_setup *as)
           // check to see if this creates an attack tuple
           nearMatch = checkAllChildCombinations(bp1, bp, &adjustment);
           // When new bucket is child, add link after checking combinations
-          addChildLink(bp1, j);
+          if (nearMatch == 0) {
+            // if there was a near match, then checkAllChildCombinations
+            // will have removed the matching children, and we wouldn't want
+            // to add this one either
+            addChildLink(bp1, j);
+          }
         }
       }
     }
