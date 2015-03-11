@@ -888,13 +888,37 @@ printBucket(bucket* bp)
 }
 
 
-bucket *
-removeChildComb(child_comb *c, 
-                  bucket *pbp,   // parent
-                  bucket *cbp,   // child (if new bucket is child)
-                  bucket **sf,
-                  int sfMax)
+/*
+ * This routine must be called after the last getNextChildComb, because
+ * it depends on the mask still being set
+ */
+#define CHILD_REMOVED 192837465   // a large and ridiculous number
+removeChildComb(child_comb *c, bucket *pbp)   // parent
 {
+  unsigned int i, bit;
+
+  if (__builtin_popcount(c->mask) > pbp->numChildren) {
+    printf("removeChildComb() bad mask (%x, %d)\n", c->mask, pbp->numChildren);
+    exit(1);
+  }
+  bit = 1;
+  for (i = 0; i < pbp->numChildren; i++) {
+    if (c->mask & bit) {
+      pbp->children[i] = CHILD_REMOVED;
+    }
+    bit <<= 1;
+  }
+  for (i = 0; i < pbp->numChildren; i++) {
+    if (pbp->children[i] == CHILD_REMOVED) {
+      // replace the removed child with the last child
+      // (note that this works even if --numChildren == i)
+      pbp->numChildren--;
+      pbp->children[i] = pbp->children[pbp->numChildren];
+      // since the last child might have been CHILD_REMOVED, we
+      // repeat this child 
+      i--;
+    }
+  }
 }
 
 bucket *
@@ -969,6 +993,128 @@ getFirstChildComb(child_comb *c,
 }
 
 /*********** TESTS **********/
+
+doSetChildren(bucket *pbp)
+{
+  pbp->numChildren = 4;
+  pbp->children[0] = 1;
+  pbp->children[1] = 2;
+  pbp->children[2] = 3;
+  pbp->children[3] = 4;
+}
+
+doFailChildren(bucket *pbp, int failNum)
+{
+  int i;
+
+  printf("num children = %d\n", pbp->numChildren);
+  for (i = 0; i < 6; i++) {
+    printf("%d:%d ", i, pbp->children[i]);
+  }
+  printf("\ntest_removeChildComb() FAIL%d\n", failNum);
+  exit(1);
+}
+
+test_removeChildComb()
+{
+  child_comb c;
+  bucket *pbp;
+  int failNum = 0;
+
+  pbp = makeRandomBucket(100);
+  if (pbp->numChildren != 0) {
+    doFailChildren(pbp, failNum);
+  }
+  failNum++;
+  c.mask = 0x0;
+  removeChildComb(&c, pbp);
+  if (pbp->numChildren != 0) { doFailChildren(pbp, failNum); }
+  else {failNum++;}
+
+  doSetChildren(pbp);
+  c.mask = 0xf;
+  removeChildComb(&c, pbp);
+  if (pbp->numChildren != 0) { doFailChildren(pbp, failNum); }
+  else {failNum++;}
+
+  doSetChildren(pbp);
+  c.mask = 0xb;
+  removeChildComb(&c, pbp);
+  if (pbp->numChildren != 1) { doFailChildren(pbp, failNum); }
+  else {failNum++;}
+  if (pbp->children[0] != 3) { doFailChildren(pbp, failNum); }
+  else {failNum++;}
+
+  doSetChildren(pbp);
+  c.mask = 0x7;
+  removeChildComb(&c, pbp);
+  if (pbp->numChildren != 1) { doFailChildren(pbp, failNum); }
+  else {failNum++;}
+  if (pbp->children[0] != 4) { doFailChildren(pbp, failNum); }
+  else {failNum++;}
+
+  doSetChildren(pbp);
+  c.mask = 0xe;
+  removeChildComb(&c, pbp);
+  if (pbp->numChildren != 1) { doFailChildren(pbp, failNum); }
+  else {failNum++;}
+  if (pbp->children[0] != 1) { doFailChildren(pbp, failNum); }
+  else {failNum++;}
+
+  doSetChildren(pbp);
+  c.mask = 0x0;
+  removeChildComb(&c, pbp);
+  if (pbp->numChildren != 4) { doFailChildren(pbp, failNum); }
+  else {failNum++;}
+  if ((pbp->children[0] != 1) || (pbp->children[3] != 4)) { 
+    doFailChildren(pbp, failNum); 
+  }
+  else {failNum++;}
+
+  doSetChildren(pbp);
+  c.mask = 0x6;
+  removeChildComb(&c, pbp);
+  if (pbp->numChildren != 2) { doFailChildren(pbp, failNum); }
+  else {failNum++;}
+  if ((pbp->children[0] != 1) || (pbp->children[1] != 4)) { 
+    doFailChildren(pbp, failNum); 
+  }
+  else {failNum++;}
+
+  doSetChildren(pbp);
+  c.mask = 0x9;
+  removeChildComb(&c, pbp);
+  if (pbp->numChildren != 2) { doFailChildren(pbp, failNum); }
+  else {failNum++;}
+  if ((pbp->children[0] != 3) || (pbp->children[1] != 2)) { 
+    doFailChildren(pbp, failNum); 
+  }
+  else {failNum++;}
+
+  doSetChildren(pbp);
+  c.mask = 0x5;
+  removeChildComb(&c, pbp);
+  if (pbp->numChildren != 2) { doFailChildren(pbp, failNum); }
+  else {failNum++;}
+  if ((pbp->children[0] != 4) || (pbp->children[1] != 2)) { 
+    doFailChildren(pbp, failNum); 
+  }
+  else {failNum++;}
+
+  doSetChildren(pbp);
+  c.mask = 0xa;
+  removeChildComb(&c, pbp);
+  if (pbp->numChildren != 2) { doFailChildren(pbp, failNum); }
+  else {failNum++;}
+  if ((pbp->children[0] != 1) || (pbp->children[1] != 3)) { 
+    doFailChildren(pbp, failNum); 
+  }
+  else {failNum++;}
+
+
+  printf("test_removeChildComb() passed\n");
+}
+
 
 // this test measures the difference in overlap between
 // 10%, 5%, and 0% overlap buckets.

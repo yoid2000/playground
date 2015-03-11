@@ -31,5 +31,6 @@ main()
   // test_linkedList();
   // test_defineBlocks();
   // test_defineCluster();
-  measureLowOverlapBuckets();
+  // measureLowOverlapBuckets();
+  test_removeChildComb();
 }
