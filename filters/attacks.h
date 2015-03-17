@@ -79,8 +79,8 @@ typedef struct mtm_bucket_t {
   bucket *bp;	         // place-holder for built bucket
 } mtm_bucket;
 
-#define LEFT 0
-#define RIGHT 1
+#define LEFT 0       // must be zero!
+#define RIGHT 1      // must be one!
 typedef struct mtm_cluster_t {
   int numBuckets[2];
   mtm_bucket bucket[2][MAX_NUM_BUCKETS_PER_SIDE];

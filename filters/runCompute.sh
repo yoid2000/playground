@@ -1,10 +1,16 @@
 #!/bin/bash
 
 DIR=$(pwd)
-OUTDIR="/home/francis/gnuplot/computeOverlap"
+# OUTDIR="/home/francis/gnuplot/computeOverlap"
+OUTDIR="/root/paul/computeOverlap"
+MAXBUCKET=2000
+EXPNUMSAMP=4
 
-for SizeRatioMax in 1 2 4 8 16
+for SizeRatioMin in 1.00
 do
-  ./computeOverlap 2000 4 $SizeRatioMax $SizeRatioMax $OUTDIR
-  ./makeGnuPlot.sh 2000 4 $SizeRatioMax $SizeRatioMax $OUTDIR
+for SizeRatioMax in 1.50
+do
+  ./computeOverlap $MAXBUCKET $EXPNUMSAMP $SizeRatioMax $SizeRatioMax $OUTDIR
+  ./makeGnuplot.sh $MAXBUCKET $EXPNUMSAMP $SizeRatioMax $SizeRatioMax $OUTDIR
+done
 done
