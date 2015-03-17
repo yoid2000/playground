@@ -583,9 +583,9 @@ main(int argc, char *argv[])
 
   printAttackSetup(&as);
 
-  //measureClusters(userList, &as); exit(1);
+  measureClusters(userList, &as); exit(1);
   //test_getSegregateMask(userList); exit(1);
-  runAttack(userList, &as);
+  //runAttack(userList, &as);
   printf("Done: %s\n", filename);
 }
 
@@ -680,6 +680,126 @@ checkClusterCorrectness(mtm_cluster *mc, bucket *userList)
 #define NUM_M_TRIALS 100
 #define MIN_B_PER_SIDE 2
 #define MAX_B_PER_SIDE 16
+#define NO_OVERLAP_VALUE 200	// not a valid value (> 100)
+#define BUCKET_IS_CONNECTED 1
+#define BUCKET_NOT_CONNECTED 0
+#define BNUM(b,s) ((b<<1)+s)
+int overlap_array[MAX_B_PER_SIDE][MAX_B_PER_SIDE];
+
+/*
+ *  Returns one if the second bucket is equal to or earlier than
+ *  the first bucket in the cluster sequence.  The sequence order is
+ *  defined as left side first (anything on left side comes before
+ *  anything on right side).
+ */
+int
+secondBucketIsBefore(int s1, int b1, int s2, int b2)
+{
+  if ((s2 == RIGHT) && (s1 == LEFT)) return(0);  // s2 is later
+  if ((s2 == LEFT) && (s1 == RIGHT)) return(1);  // s2 is earlier
+  // s2 and s1 on same side
+  if (b2 > b1) return(0);  // s2 is later
+  return(1);   // s2 is earlier or same
+}
+
+initOverlapArray()
+{
+  int i, j;
+
+  for (i = 0; i < MAX_B_PER_SIDE; i++) {
+    for (j = 0; j < MAX_B_PER_SIDE; j++) {
+      overlap_array[i][j] = NO_OVERLAP_VALUE;
+    }
+  }
+}
+
+printOverlapArray(mtm_cluster *mc)
+{
+  int s1, s2, b1, b2;
+
+  for (s1 = 0; s1 < 2; s1++) {
+    for (b1 = 0; b1 < mc->numBuckets[s1]; b1++) {
+      for (s2 = s1; s2 < 2; s2++) {
+        for (b2 = 0; b2 < mc->numBuckets[s2]; b2++) {
+          if (secondBucketIsBefore(s1, b1, s2, b2)) { continue; }
+          printf("     %d %d: %d\n", BNUM(b1,s1), BNUM(b2,s2),
+                       overlap_array[BNUM(b1,s1)][BNUM(b2,s2)]);
+        }
+      }
+    }
+  }
+}
+
+/*
+ *  Returns the max overlap threshold at which the cluster is connected
+ */
+int
+computeConnectedClusterThreshold(attack_setup *as, 
+                                 mtm_cluster *mc)
+{
+  int connected[MAX_B_PER_SIDE*2];
+  int i, j, threshold;
+  int s1, s2, b1, b2;
+  int connectionMade, completelyConnected;
+
+  for (threshold = 95; threshold >= 0; threshold -= 5) {
+    // initialize the connected array
+    for (i = 0; i < MAX_B_PER_SIDE; i++) {
+      connected[i] = BUCKET_NOT_CONNECTED;
+    }
+    // start from any bucket (side 0, bucket 0 in this case)
+    connected[BNUM(0,0)] = BUCKET_IS_CONNECTED;
+    // what follows won't be the most efficient way to find the
+    // connected components, but it'll work
+    while(1) {
+      // walk through all buckets, and if already connected, add
+      // the neighbors that are above threshold
+      connectionMade = 0;
+      for (s1 = 0; s1 < 2; s1++) {
+        for (b1 = 0; b1 < mc->numBuckets[s1]; b1++) {
+          if (connected[BNUM(b1,s1)] == BUCKET_IS_CONNECTED) {
+            // ok, look at the link with the other buckets
+            for (s2 = s1; s2 < 2; s2++) {
+              for (b2 = 0; b2 < mc->numBuckets[s2]; b2++) {
+                if (secondBucketIsBefore(s1, b1, s2, b2)) { continue; }
+                if (connected[BNUM(b2,s2)] == BUCKET_IS_CONNECTED) {
+                  // already connected, so don't need to check
+                  continue;
+                }
+                if (overlap_array[BNUM(b1,s1)][BNUM(b2,s2)] >= threshold) {
+                  // above threshold, so add to the connected array
+                  connected[BNUM(b2,s2)] = BUCKET_IS_CONNECTED;
+                  connectionMade = 1;
+                }
+              }
+            }
+          }
+        }
+      }
+      if (connectionMade == 0) {
+        // no progress made the last round, so we must be done
+        break;
+      }
+    }
+    // check to see if we are completely connected
+    completelyConnected = 1;
+    for (s1 = 0; s1 < 2; s1++) {
+      for (b1 = 0; b1 < mc->numBuckets[s1]; b1++) {
+        if (connected[BNUM(b1,s1)] == BUCKET_NOT_CONNECTED) {
+          completelyConnected = 0;
+        }
+      }
+    }
+    if (completelyConnected) {
+      // yay!  all done
+      return(threshold);
+    }
+  }
+  // should never get here
+  printf("computeConnectedClusterThreshold() ERROR\n");
+  exit(1);
+}
+
 measureClusters(bucket *userList, attack_setup *as)
 {
   int numBuckets;
@@ -695,8 +815,8 @@ measureClusters(bucket *userList, attack_setup *as)
   int *vlow[2], *low[2], *high[2], *vhigh[2];
   int vlow_index[2], low_index[2], high_index[2], vhigh_index[2];
   mystats vlowS[2], lowS[2], highS[2], vhighS[2];
+  int connectThreshold;
 
-  i = 0;
   fprintf(as->f, "perfect overlap left_buckets right_buckets bsize base_blocks vlow_frac vlow_av vlow_sd low_frac low_av low_sd high_frac high_av high_sd vhigh_frac vhigh_av vhigh_sd\n");
   fflush(as->f);
 
@@ -740,6 +860,7 @@ measureClusters(bucket *userList, attack_setup *as)
           }
           for (j = 0; j < NUM_M_TRIALS; j++) {
             initCluster(&mc);
+            initOverlapArray();
             baseBlocks = as->numBaseBlocks + 
                        as->numLeftBuckets + as->numRightBuckets - 1;
             block_array = defineBlocks(1, worstCaseBlocks(as), &lastBlock);
@@ -748,6 +869,7 @@ measureClusters(bucket *userList, attack_setup *as)
             makeClusterAndBuckets(&mc, as, vbp, userList, block_array,
                                                       baseBlocks, 0, 1, p);
 
+            // the following line of code was for testing
             // if (p == 1) { checkClusterCorrectness(&mc, userList); }
 
             // this shouldn't influence the measurements much, but go ahead
@@ -776,17 +898,20 @@ measureClusters(bucket *userList, attack_setup *as)
                           (int)((float)(as->usersPerBucket) / (float)3.0)) {
                   printf("measureClusters() ERROR bucket too small (%d of %d)\n",
                            (mc.bucket[s1][b1].bp)->bsize, as->usersPerBucket);
+                  printMtmCluster(&mc);
+                  printAllClusterBuckets(&mc);
                   exit(1);
                               
                 }
                 for (s2 = s1; s2 < 2; s2++) {
-                  for (b2 = b1; b2 < mc.numBuckets[s2]; b2++) {
-                    if ((s1 == s2) && (b1 == b2)) { continue; }
+                  for (b2 = 0; b2 < mc.numBuckets[s2]; b2++) {
+                    if (secondBucketIsBefore(s1, b1, s2, b2)) { continue; }
                     o = bucketsHaveACommonBlock(&(mc.bucket[s1][b1]), 
                                                       &(mc.bucket[s2][b2]));
                     compareFullFilters(mc.bucket[s1][b1].bp, 
                                                   mc.bucket[s2][b2].bp, &c);
                     overlap = (int) ((float) c.overlap * (float) 1.5625);
+                    overlap_array[BNUM(b1,s1)][BNUM(b2,s2)] = overlap;
                     if (overlap < 20) {
                       vlow[o][vlow_index[o]++] = overlap;
                     }
@@ -811,6 +936,14 @@ measureClusters(bucket *userList, attack_setup *as)
               }
             }
             free(block_array);
+            connectThreshold = computeConnectedClusterThreshold(as, &mc);
+            printOverlapArray(&mc);
+            printMtmCluster(&mc);
+            printf("%d %d %d %d %d %d\n", 
+                       p, as->numLeftBuckets, as->numRightBuckets, 
+                       as->usersPerBucket, as->numBaseBlocks,
+                       connectThreshold);
+            fflush(NULL);
           }
           //printMtmCluster(&mc);
           // report the results
