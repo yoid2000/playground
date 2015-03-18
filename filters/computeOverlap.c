@@ -26,7 +26,8 @@ unsigned char indices[NUM_LEVELS][MAX_VALUE][MAX_VALUE];
 unsigned char overlapDiff[101][20];
 unsigned char overlapIndex[101];
 
-computeOverlapValues(int maxBucket, 
+computeOverlapValues(int minBucket,
+                     int maxBucket, 
                      int numSamples, 
                      int numSamplesExp, 
                      float sizeRatioMin, 
@@ -60,8 +61,8 @@ computeOverlapValues(int maxBucket,
     overlapIndex[i] = 0;
   }
 
-  sprintf(fileloc, "%s/%d.%d.%.2f.%.2f.scatter.data", dir, 
-                    maxBucket, numSamplesExp, sizeRatioMin, sizeRatioMax);
+  sprintf(fileloc, "%s/%d.%d.%d.%.2f.%.2f.scatter.data", dir, 
+            minBucket, maxBucket, numSamplesExp, sizeRatioMin, sizeRatioMax);
   if ((scatter = fopen(fileloc, "w")) == NULL) {
     printf("Failed to fopen file %s\n", fileloc);
     exit(1);
@@ -69,8 +70,8 @@ computeOverlapValues(int maxBucket,
   fprintf(scatter, "# bsize1 bsize2 numFirst numSecond level 0:1 1:1 0:0 sizeRatio trueOverlap computedOverlap overlapDiff\n");
 
 
-  sprintf(fileloc, "%s/%d.%d.%.2f.%.2f.overlapDiff.data", dir, 
-                    maxBucket, numSamplesExp, sizeRatioMin, sizeRatioMax);
+  sprintf(fileloc, "%s/%d.%d.%d.%.2f.%.2f.overlapDiff.data", dir, 
+           minBucket, maxBucket, numSamplesExp, sizeRatioMin, sizeRatioMax);
   if ((fDiff = fopen(fileloc, "w")) == NULL) {
     printf("Failed to fopen file %s\n", fileloc);
     exit(1);
@@ -78,8 +79,8 @@ computeOverlapValues(int maxBucket,
   fprintf(fDiff, "# computed_overlap diff_av diff_sd diff_min diff_max\n");
 
   for (k = 0; k < NUM_LEVELS; k++) {
-    sprintf(fileloc, "%s/%d.%d.%.2f.%.2f.%d.base.data", dir, 
-                    maxBucket, numSamplesExp, sizeRatioMin, sizeRatioMax, k);
+    sprintf(fileloc, "%s/%d.%d.%d.%.2f.%.2f.%d.base.data", dir, 
+          minBucket, maxBucket, numSamplesExp, sizeRatioMin, sizeRatioMax, k);
     if ((foo[k] = fopen(fileloc, "w")) == NULL) {
       printf("Failed to fopen file %s\n", fileloc);
       exit(1);
@@ -88,7 +89,7 @@ computeOverlapValues(int maxBucket,
   }
 
   for (i = 0; i < numSamples; i++) {
-    bsize1 = getRandInteger(2, maxBucket);
+    bsize1 = getRandInteger(minBucket, maxBucket);
     sizeRatio = getRandFloat(sizeRatioMin,sizeRatioMax);
     bsize2 = (int) ((float) bsize1 * sizeRatio);
     overlap = getRandInteger(1,100);
@@ -185,8 +186,9 @@ computeOverlapValues(int maxBucket,
 
 printCommandLines()
 {
-  printf("Usage: ./computeOverlap maxBucket numSamples sizeRatioMin sizeRatioMaxoutputDir\n");
-  printf("      maxBucket = Maximum size of the smaller bucket (> 3)\n");
+  printf("Usage: ./computeOverlap minBucket maxBucket numSamples sizeRatioMin sizeRatioMaxoutputDir\n");
+  printf("      minBucket = Minimum size of the smaller bucket (> 1)\n");
+  printf("      maxBucket = Maximum size of the smaller bucket (> minBucket)\n");
   printf("      numSamples = Exponent (10^^numSamples) for the number of bucket pairs produced\n");
   printf("      sizeRatioMin = Smallest possible size ratio (>= 1)\n");
   printf("      sizeRatioMax = Largest possible size ratio (<= 16)\n");
@@ -195,24 +197,30 @@ printCommandLines()
 
 main(int argc, char *argv[])
 {
-  int maxBucket, numSamples, numSamplesExp;
+  int minBucket, maxBucket, numSamples, numSamplesExp;
   double sizeRatioMin, sizeRatioMax;
   char *dir;
 
   srand48((long int) 10);
 
-  if (argc != 6) {
+  if (argc != 7) {
     printCommandLines();
     exit(1);
   }
 
-  maxBucket = atoi(argv[1]);
-  if (maxBucket < 3) {
+  minBucket = atoi(argv[1]);
+  if (minBucket < 1) {
     printCommandLines();
     exit(1);
   }
 
-  numSamplesExp = atoi(argv[2]);
+  maxBucket = atoi(argv[2]);
+  if (maxBucket <= minBucket) {
+    printCommandLines();
+    exit(1);
+  }
+
+  numSamplesExp = atoi(argv[3]);
   numSamples = (int)pow((double)10, (double)numSamplesExp);
   if (numSamples < 10) {
     printf("numSamples rather small (10^%d = %d)\n", numSamplesExp, numSamples);
@@ -220,21 +228,21 @@ main(int argc, char *argv[])
     exit(1);
   }
 
-  sizeRatioMin = atof(argv[3]);
+  sizeRatioMin = atof(argv[4]);
   if (sizeRatioMin < 1) {
     printf("Bad sizeRatioMin %.2f\n", sizeRatioMin);
     printCommandLines();
     exit(1);
   }
 
-  sizeRatioMax = atof(argv[4]);
+  sizeRatioMax = atof(argv[5]);
   if (sizeRatioMax < 1) {
     printf("Bad sizeRatioMax %.2f\n", sizeRatioMax);
     printCommandLines();
     exit(1);
   }
 
-  dir = argv[5];
+  dir = argv[6];
 
-  computeOverlapValues(maxBucket, numSamples, numSamplesExp, (float)sizeRatioMin, (float)sizeRatioMax, dir);
+  computeOverlapValues(minBucket, maxBucket, numSamples, numSamplesExp, (float)sizeRatioMin, (float)sizeRatioMax, dir);
 }

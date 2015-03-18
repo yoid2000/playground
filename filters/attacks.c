@@ -757,20 +757,20 @@ computeConnectedClusterThreshold(attack_setup *as,
       connectionMade = 0;
       for (s1 = 0; s1 < 2; s1++) {
         for (b1 = 0; b1 < mc->numBuckets[s1]; b1++) {
-          if (connected[BNUM(b1,s1)] == BUCKET_IS_CONNECTED) {
-            // ok, look at the link with the other buckets
-            for (s2 = s1; s2 < 2; s2++) {
-              for (b2 = 0; b2 < mc->numBuckets[s2]; b2++) {
-                if (secondBucketIsBefore(s1, b1, s2, b2)) { continue; }
-                if (connected[BNUM(b2,s2)] == BUCKET_IS_CONNECTED) {
-                  // already connected, so don't need to check
-                  continue;
-                }
-                if (overlap_array[BNUM(b1,s1)][BNUM(b2,s2)] >= threshold) {
-                  // above threshold, so add to the connected array
-                  connected[BNUM(b2,s2)] = BUCKET_IS_CONNECTED;
-                  connectionMade = 1;
-                }
+          // ok, look at the link with the other buckets
+          for (s2 = s1; s2 < 2; s2++) {
+            for (b2 = 0; b2 < mc->numBuckets[s2]; b2++) {
+              if (secondBucketIsBefore(s1, b1, s2, b2)) { continue; }
+              if ((overlap_array[BNUM(b1,s1)][BNUM(b2,s2)] >= threshold) &&
+                  (((connected[BNUM(b1,s1)] == BUCKET_IS_CONNECTED) &&
+                   (connected[BNUM(b2,s2)] != BUCKET_IS_CONNECTED)) ||
+                  ((connected[BNUM(b1,s1)] != BUCKET_IS_CONNECTED) &&
+                   (connected[BNUM(b2,s2)] == BUCKET_IS_CONNECTED)))) {
+                // above threshold, and one or the other end is already
+                // connected (but not both), so add to the connected array
+                connected[BNUM(b1,s1)] = BUCKET_IS_CONNECTED;
+                connected[BNUM(b2,s2)] = BUCKET_IS_CONNECTED;
+                connectionMade = 1;
               }
             }
           }
@@ -816,6 +816,7 @@ measureClusters(bucket *userList, attack_setup *as)
   int vlow_index[2], low_index[2], high_index[2], vhigh_index[2];
   mystats vlowS[2], lowS[2], highS[2], vhighS[2];
   int connectThreshold;
+  int numAbove20, numAbove10;
 
   fprintf(as->f, "perfect overlap left_buckets right_buckets bsize base_blocks vlow_frac vlow_av vlow_sd low_frac low_av low_sd high_frac high_av high_sd vhigh_frac vhigh_av vhigh_sd\n");
   fflush(as->f);
@@ -858,6 +859,8 @@ measureClusters(bucket *userList, attack_setup *as)
           for (o = 0; o < 2; o++) {
             vlow_index[o]=0, low_index[o]=0, high_index[o]=0, vhigh_index[o]=0;
           }
+          numAbove20 = 0;
+          numAbove10 = 0;
           for (j = 0; j < NUM_M_TRIALS; j++) {
             initCluster(&mc);
             initOverlapArray();
@@ -937,13 +940,19 @@ measureClusters(bucket *userList, attack_setup *as)
             }
             free(block_array);
             connectThreshold = computeConnectedClusterThreshold(as, &mc);
-            printOverlapArray(&mc);
-            printMtmCluster(&mc);
+            //printOverlapArray(&mc);
+            //printMtmCluster(&mc);
             printf("%d %d %d %d %d %d\n", 
                        p, as->numLeftBuckets, as->numRightBuckets, 
                        as->usersPerBucket, as->numBaseBlocks,
                        connectThreshold);
             fflush(NULL);
+            if (connectThreshold >= 20) {
+              numAbove20++;
+            }
+            if (connectThreshold >= 10) {
+              numAbove10++;
+            }
           }
           //printMtmCluster(&mc);
           // report the results
@@ -954,16 +963,18 @@ measureClusters(bucket *userList, attack_setup *as)
             getStatsInt(&lowS[o], low[o], low_index[o]);
             getStatsInt(&highS[o], high[o], high_index[o]);
             getStatsInt(&vhighS[o], vhigh[o], vhigh_index[o]);
-            fprintf(as->f, "%d %d %d %4d %3d %d    %.2f %.2f %.2f    %.2f %.2f %.2f     %.2f %.2f %.2f     %.2f %.2f %.2f\n",
+            fprintf(as->f, "%d %d %d %4d %3d %d    %d %d     %d %.1f %.1f    %d %.1f %.1f     %d %.1f %.1f     %d %.1f %.1f\n",
                        p, o, as->numLeftBuckets, as->numRightBuckets, 
                        as->usersPerBucket, as->numBaseBlocks,
-                       (float)((float)vlow_index[o]/(float)total), 
+                       (int)((float)(numAbove10 * 100)/(float)NUM_M_TRIALS), 
+                       (int)((float)(numAbove20 * 100)/(float)NUM_M_TRIALS), 
+                       (int)((float)(vlow_index[o] * 100)/(float)total), 
                        vlowS[o].av, vlowS[o].sd,
-                       (float)((float)low_index[o]/(float)total), 
+                       (int)((float)(low_index[o] * 100)/(float)total), 
                        lowS[o].av, lowS[o].sd,
-                       (float)((float)high_index[o]/(float)total), 
+                       (int)((float)(high_index[o] * 100)/(float)total), 
                        highS[o].av, highS[o].sd,
-                       (float)((float)vhigh_index[o]/(float)total), 
+                       (int)((float)(vhigh_index[o] * 100)/(float)total), 
                        vhighS[o].av, vhighS[o].sd);
             fflush(as->f);
           }

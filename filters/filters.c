@@ -100,7 +100,14 @@ done:
     if ((j = (c->first - c->common)) >= 256) {
       j = 255;
     }
-    c->overlap = overlap_array[i][j];
+    // to avoid floating point math in this operation, we use
+    // (bs->bsize + (bs->bsize>>1)) instead of (bs->bsize * 1.5)
+    if ((bs->bsize <= 2000) && ((bs->bsize + (bs->bsize >> 1)) >= bl->bsize)) {
+      c->overlap = partial_overlap_array[i][j];
+    }
+    else {
+      c->overlap = full_overlap_array[i][j];
+    }
   }
 }
 
@@ -450,11 +457,11 @@ runCompareFiltersSpeedTests()
   initOneFilter(&of1);
   initOneFilter(&of2);
 
-  clock_gettime(CLOCK_MONOTONIC, &start);
+  //clock_gettime(CLOCK_MONOTONIC, &start);
   for (i = 0; i < NUM_RUNS; i++) {
     compareFilterPair(&of1, &of2, &c);
   }
-  clock_gettime(CLOCK_MONOTONIC, &end);
+  //clock_gettime(CLOCK_MONOTONIC, &end);
 
   diff = BILLION * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec;
   printf("Elapsed time = %llu nanoseconds\n", (long long unsigned int) diff);
@@ -476,11 +483,11 @@ runCompareFullFiltersSpeedTests()
   makeFilterFromBucket(bp2);
 
 
-  clock_gettime(CLOCK_MONOTONIC, &start);
+  //clock_gettime(CLOCK_MONOTONIC, &start);
   for (i = 0; i < NUM_RUNS; i++) {
     compareFullFilters(bp1, bp2, &c);
   }
-  clock_gettime(CLOCK_MONOTONIC, &end);
+  //clock_gettime(CLOCK_MONOTONIC, &end);
 
   diff = BILLION * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec;
   printf("Elapsed time = %llu nanoseconds\n", (long long unsigned int) diff);
