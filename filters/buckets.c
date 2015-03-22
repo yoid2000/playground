@@ -13,6 +13,7 @@ extern bucket *makeRandomBucket(int arg1);
 extern bucket *makeBucket(int arg1);
 extern int exceedsNoisyThreshold(float arg1, float arg2, float arg3);
 extern float getRandFloat(float arg1, float arg2);
+extern removeFromCluster(bucket *bp);
 
 /* 
  * Allocates memory for a bucket of size bsize.
@@ -38,6 +39,7 @@ makeBucket(int bsize)
   bp->bsize = bsize;
   initFilter(bp);
   bp->numChildren = 0;
+  bp->clusterHead = NULL;
 
   return(bp);
 }
@@ -871,6 +873,7 @@ makeRandomBucket(int bsize)
 
 freeBucket(bucket *bp)
 {
+  removeFromCluster(bp);
   free((void *) bp->list);
   free((void *) bp);
 }
@@ -1283,56 +1286,6 @@ test_defineBlocks()
   printf("test_defineBlocks() passed\n");
   free(block_array);
 }
-
-test_linkedList()
-{
-  LIST_HEAD(listhead, bucket_list_t) head;
-  bucket_list *blp1, *blp2, *blp;
-  
-  LIST_INIT(&head);                       /* Initialize the list. */
-  
-  blp1 = (bucket_list *) malloc(sizeof(bucket_list));
-  LIST_INSERT_HEAD(&head, blp1, clist);
-  
-  blp2 = (bucket_list *) malloc(sizeof(bucket_list));
-  LIST_INSERT_HEAD(&head, blp2, clist);
-  //LIST_INSERT_AFTER(blp1, blp2, clist);
-                                          /* Forward traversal. */
-  for (blp = head.lh_first; blp != NULL; blp = blp->clist.le_next) {
-    printf("%p\n", blp);
-  }
-  
-  while (head.lh_first != NULL) {           /* Delete. */
-    printf("%p\n", head.lh_first);
-    LIST_REMOVE(head.lh_first, clist);
-  }
-}
-
-/*
-test_linkedList()
-{
-  LIST_HEAD(listhead, bucket) head;
-  struct listhead *headp;
-  struct test_bucket *bp1;
-
-  LIST_INIT(&head);
-  bp1 = malloc(sizeof struct test_bucket);
-  LIST_INSERT_HEAD(&head, bp1, mtm_list);
-  bp1 = malloc(sizeof struct test_bucket);
-  LIST_INSERT_HEAD(&head, bp1, mtm_list);
-  bp1 = malloc(sizeof struct test_bucket);
-  LIST_INSERT_HEAD(&head, bp1, mtm_list);
-
-  for (bp1 = head.lh_first; bp1 != NULL; bp1 = bp1->mtm_list.le_next) {
-    printf("bp1 = %p\n", bp1);
-  }
-  while ((bp1 = head.lh_first) != NULL) {
-    LIST_REMOVE(head.lh_first, mtm_list);
-    printf("Freeing %p\n", bp1);
-    freeBucket(bp1);
-  }
-}
-*/
 
 int numCCChecks=0;
 

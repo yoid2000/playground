@@ -580,10 +580,11 @@ main(int argc, char *argv[])
   // Make complete list of users used for all attacks
   userList = createHighTouchTable(USER_LIST_SIZE);
   diffAttackDiffs = (float *) calloc(as.numRounds, sizeof(float *));
+  initAllClustersList();
 
   printAttackSetup(&as);
 
-  measureClusters(userList, &as); exit(1);
+  //measureClusters(userList, &as); exit(1);
   //test_getSegregateMask(userList); exit(1);
   //runAttack(userList, &as);
   printf("Done: %s\n", filename);
@@ -818,7 +819,7 @@ measureClusters(bucket *userList, attack_setup *as)
   int connectThreshold;
   int numAbove20, numAbove10;
 
-  fprintf(as->f, "perfect overlap left_buckets right_buckets bsize base_blocks vlow_frac vlow_av vlow_sd low_frac low_av low_sd high_frac high_av high_sd vhigh_frac vhigh_av vhigh_sd\n");
+  fprintf(as->f, "perfect overlap left_buckets right_buckets bsize base_blocks percentAbove10 percentAbove20 vlow_frac vlow_av vlow_sd low_frac low_av low_sd high_frac high_av high_sd vhigh_frac vhigh_av vhigh_sd\n");
   fflush(as->f);
 
   // make max size arrays for holding data points
