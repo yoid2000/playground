@@ -40,10 +40,12 @@ typedef struct one_filter_t {
 typedef struct bucket_t {
   one_filter filters[FILTERS_PER_BUCKET];
   int bsize;	    // number of entries
-  unsigned int *list;   // pointer to first entry
+  unsigned int *list;   // pointer to first entry (user)
   int sorted;	    // 1 if the user list has been sorted
   unsigned int children[MAX_CHILDREN];    // bucket index number
   int numChildren;
+  void *clusterHead;
+  LIST_ENTRY(bucket_t) entry;
 } bucket;
 
 typedef struct compare_t {
@@ -65,8 +67,17 @@ typedef struct child_comb_t {
   bucket *cbp;
 } child_comb;
 
-// following unused for now...just some test code
-typedef struct bucket_list_t {
-  bucket *bp;
-  LIST_ENTRY(bucket_list_t) clist;
-} bucket_list;
+typedef struct hammer_list_entry_t {
+  bucket *head_bp;
+  bucket *handle_bp;
+  LIST_ENTRY(hammer_list_entry_t) entry;
+} hammer_list_entry;
+
+#define CLUSTER_OVERLAP_HISTOGRAM 10
+typedef struct cluster_t {
+  LIST_HEAD(clusterListHead, bucket_t) head;  // list of buckets
+  LIST_ENTRY(cluster_t) entry;   // for use with allClustersList
+  int num;                       // number of buckets
+  int histogram[CLUSTER_OVERLAP_HISTOGRAM];   // stats about overlap
+} cluster;
+

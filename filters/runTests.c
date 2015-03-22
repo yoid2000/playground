@@ -32,5 +32,7 @@ main()
   // test_defineBlocks();
   // test_defineCluster();
   // measureLowOverlapBuckets();
-  test_removeChildComb();
+  // test_removeChildComb();
+  // test_hammerList();
+  test_clusterList();
 }

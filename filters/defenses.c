@@ -6,7 +6,6 @@
 #include "./filters.h"
 #include "./hightouch.h"
 #include "./attacks.h"
-#include "./clusters.h"
 
 // externs needed to keep compiler from warning
 extern bucket *makeBucket(int arg1);
@@ -37,15 +36,6 @@ extern int countHighTouch(bucket *arg1);
 bucket **storedFilters;
 int sfIndex; 	// index into above list
 int maxSfIndex;
-/*
- * Each entry to this 2D array is a index into storedFilters.
- * The first dimension is cluster size.  In other words, a cluster
- * with 7 buckets would go into cluster[7][x].  The first such
- * cluster would be at position 0 (clusters[7][0], the second such
- * cluster at position 7 (clusters[7][7]), and so on. 
- */
-int clusters[LARGEST_CLUSTER][MOST_BUCKETS];
-int clusters_index[LARGEST_CLUSTER];
 
 #define MAX_TOUCH_COUNT 20
 int numTouches[MAX_TOUCH_COUNT];
@@ -64,13 +54,15 @@ int numFixedNoise;
 float roundingBias;
 int numRounding;
 
+/*
+ *  This happens once per attack.
+ */
 initDefense(int maxBuckets) {
   int i;
 
   storedFilters = (bucket **) calloc(maxBuckets, sizeof(bucket *));
   sfIndex = 0;
   maxSfIndex = maxBuckets;
-  initClusters();
   // this hash table much bigger than needed
   initHighTouchTable();
 }
@@ -158,11 +150,15 @@ freeStoredFilters()
   sfIndex = 0;
 }
 
+/*
+ *  This happens once per attack.
+ */
 endDefense() 
 {
   countNumTouches(numTouches, MAX_TOUCH_COUNT);
   freeStoredFilters();
   free(storedFilters);
+  freeAllClustersList();
 }
 
 float
