@@ -18,7 +18,8 @@ freeCluster(cluster *cp)
   bucket *bp;
 
   while (bp = cp->head.lh_first) {
-    removeFromCluster(bp);
+    // do WITHOUT_CLUSTER_FREE so that cp isn't free'd in this loop
+    removeFromCluster(bp, WITHOUT_CLUSTER_FREE);
   }
   LIST_REMOVE(cp, entry);
   free(cp);
@@ -96,7 +97,14 @@ addToCluster(bucket *new_bp, bucket *prev_bp, int overlap)
   }
 }
 
-removeFromCluster(bucket *bp)
+/*
+ *  Note that removing does not update the histogram in any way.
+ *  I don't think this is a problem though, because it only results
+ *  in an over-estimate of overlap, and therefore a conservative
+ *  decision to block an analyst.  (I think removing will be very
+ *  rare, since it implies an attack was found.)
+ */
+removeFromCluster(bucket *bp, int clusterFree)
 {
   cluster *cp;
 
@@ -113,6 +121,10 @@ removeFromCluster(bucket *bp)
   LIST_REMOVE(bp, entry);
   bp->clusterHead = (void *) NULL;
   cp->num--;
+  if ((clusterFree == WITH_CLUSTER_FREE) && (cp->num == 0)) {
+    LIST_REMOVE(cp, entry);
+    free(cp);
+  }
 }
 
 /*
@@ -126,15 +138,16 @@ joinClusters(cluster *cp1, cluster *cp2)
 
   newSize = cp1->num + cp2->num;
 
-  while (bp = cp2->head.lh_first) {
-    removeFromCluster(bp);
-    addToClusterList(cp1, bp);
-  }
   // transfer the statistics of cp2 into cp1
   for (i = 0; i < CLUSTER_OVERLAP_HISTOGRAM; i++) {
     cp1->histogram[i] += cp2->histogram[i];
   }
-  // 
+  while (bp = cp2->head.lh_first) {
+    // this is ugly, but we do without cluster free here so that the
+    // pointer cp2 isn't free'd while in this loop!
+    removeFromCluster(bp, WITHOUT_CLUSTER_FREE);
+    addToClusterList(cp1, bp);
+  }
   freeCluster(cp2);
 
   if (cp1->num != newSize) {
@@ -165,15 +178,124 @@ printCluster(cluster *cp)
   printf("\n");
 }
 
+initClusterStats(cluster_stats *csp)
+{
+  int i;
+
+  csp->numClusters = 0;
+  initStats(&(csp->sizeS));
+  initStats(&(csp->overlapS));
+  csp->totalClusterOverlap = 0;
+  for (i = 0; i < CLUSTER_OVERLAP_HISTOGRAM; i++) {
+    initStats(&(csp->histS[i]));
+  }
+}
+
+addClusterStats(cluster_stats *to, cluster_stats *from)
+{
+  int i;
+
+  to->numClusters += from->numClusters;
+  addStats(&(to->sizeS), &(from->sizeS));
+  addStats(&(to->overlapS), &(from->overlapS));
+  to->totalClusterOverlap += from->totalClusterOverlap;
+  for (i = 0; i < CLUSTER_OVERLAP_HISTOGRAM; i++) {
+    addStats(&(to->histS[i]), &(from->histS[i]));
+  }
+}
+
+getAllClustersStats(cluster_stats *csp)
+{
+  cluster *cp;
+  mystats sizeS, overlapS, histS[CLUSTER_OVERLAP_HISTOGRAM];
+  int *size, *overlap, *hist[CLUSTER_OVERLAP_HISTOGRAM];
+  int j, i, clusterOverlap;
+
+  // first count number of clusters
+  csp->numClusters = 0;
+  for (cp = allClustersList.lh_first; cp != NULL; cp = cp->entry.le_next) {
+    csp->numClusters++;
+  }
+
+  // make arrays for stats
+  size = (int *) calloc(csp->numClusters, sizeof(int));
+  overlap = (int *) calloc(csp->numClusters, sizeof(int));
+  for (j = 0; j < CLUSTER_OVERLAP_HISTOGRAM; j++) {
+    hist[j] = (int *) calloc(csp->numClusters, sizeof(int));
+  }
+
+  // fill arrays
+  i = 0;
+  csp->totalClusterOverlap = 0;
+  for (cp = allClustersList.lh_first; cp != NULL; cp = cp->entry.le_next) {
+    size[i] = cp->num;
+    clusterOverlap = 0;
+    for (j = 0; j < CLUSTER_OVERLAP_HISTOGRAM; j++) {
+      clusterOverlap += ((j*10)+5) * cp->histogram[j];
+    }
+    for (j = 0; j < CLUSTER_OVERLAP_HISTOGRAM; j++) {
+      hist[j][i] = cp->histogram[j];
+    }
+    csp->totalClusterOverlap += clusterOverlap;
+    overlap[i] = clusterOverlap;
+    i++;
+  }
+
+  // compute remaining stats
+  getStatsInt(&(csp->sizeS), size, csp->numClusters);
+  getStatsInt(&(csp->overlapS), overlap, csp->numClusters);
+  for (j = 0; j < CLUSTER_OVERLAP_HISTOGRAM; j++) {
+    getStatsInt(&(csp->histS[j]), hist[j], csp->numClusters);
+  }
+}
+
+printClusterStats(cluster_stats *csp, FILE *f)
+{
+  int j;
+
+  if (f) {
+    fprintf(f, "      %d Clusters, Size: av %.2f, max %.2f, sd %.2f\n", 
+                           csp->numClusters, csp->sizeS.av,
+                           csp->sizeS.max, csp->sizeS.sd);
+    fprintf(f, "      Overlap: total %d, av %.2f, max %.2f, sd %.2f\n", 
+                        csp->totalClusterOverlap, csp->overlapS.av, 
+                        csp->overlapS.max, csp->overlapS.sd);
+    fprintf(f, "      Hist: \n");
+    for (j = 0; j < CLUSTER_OVERLAP_HISTOGRAM; j++) {
+      fprintf(f, "          %d: av %.2f, max %.2f, sd %.2f\n", 
+                        j*10, csp->histS[j].av, 
+                        csp->histS[j].max, csp->histS[j].sd);
+    }
+  }
+  else {
+    printf("      %d Clusters, Size: av %.2f, max %.2f, sd %.2f\n", 
+                           csp->numClusters, csp->sizeS.av,
+                           csp->sizeS.max, csp->sizeS.sd);
+    printf("      Overlap: total %d, av %.2f, max %.2f, sd %.2f\n", 
+                        csp->totalClusterOverlap, csp->overlapS.av, 
+                        csp->overlapS.max, csp->overlapS.sd);
+    printf("      Hist: \n");
+    for (j = 0; j < CLUSTER_OVERLAP_HISTOGRAM; j++) {
+      printf("          %d: av %.2f, max %.2f, sd %.2f\n", 
+                        j*10, csp->histS[j].av, 
+                        csp->histS[j].max, csp->histS[j].sd);
+    }
+  }
+}
+
 printAllClusters()
 {
   cluster *cp;
+  cluster_stats cs;
   int i=0;
 
+  getAllClustersStats(&cs);
+  printf("\n******  %d Clusters *******\n", cs.numClusters);
   for (cp = allClustersList.lh_first; cp != NULL; cp = cp->entry.le_next) {
-    printf("****** Cluster %d: %p, size %d *******\n", i++, cp, cp->num);
+    printf("Cluster %d: %p, size %d\n", i++, cp, cp->num);
     printCluster(cp);
   }
+  printClusterStats(&cs, NULL);
 }
 
 
@@ -219,6 +341,39 @@ checkAllClusters(int error)
   }
 }
 
+runClusterStress(int print)
+{
+  bucket *bucketList[1000];
+  bucket *bp1, *bp2;
+  int i, index;
+  cluster_stats cs;
+
+  for (i = 0; i < 1000; i++) {
+    bucketList[i] = makeRandomBucket(getRandInteger(50,150));
+  }
+
+  i = 0;
+  while(1) {
+    if (++i > 100) {
+      i = 0;
+      getAllClustersStats(&cs);
+      if (print) printf("\n");
+      if (print) printClusterStats(&cs, NULL);
+    }
+    bp2 = NULL;
+    bp1 = bucketList[getRandInteger(0,999)];
+    while (1) {
+      bp2 = bucketList[getRandInteger(0,999)];
+      if (bp2 != bp1) break;
+    }
+    addToCluster(bp1, bp2, getRandInteger(10,100));
+
+    index = getRandInteger(0,999);
+    bp1 = bucketList[index];
+    removeFromCluster(bp1, WITH_CLUSTER_FREE);
+  }
+}
+
 test_clusterList()
 {
   cluster *cp, *cp1;
@@ -239,7 +394,9 @@ test_clusterList()
   checkAllClusters(error++);
 
   if (print) printf("\nRemove %p from cluster\n", bp);
-  removeFromCluster(bp);
+  // in normal operate, we would do "WITH_CLUSTER_FREE", but for this
+  // testing, we need to keep cp around
+  removeFromCluster(bp, WITHOUT_CLUSTER_FREE);
   if (print) printAllClusters();
   test_count[0] = 0; test_values[0][test_count[0]++] = 100;
   checkAllClusters(error++);
@@ -318,6 +475,10 @@ test_clusterList()
   test_overlaps[0][3] = 1;
   test_overlaps[0][5] = 1;
   checkAllClusters(error++);
+
+  freeAllClustersList();
+
+  runClusterStress(print);
 
   printf("test_clusterList() passed\n");
 }

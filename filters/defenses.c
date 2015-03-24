@@ -53,6 +53,7 @@ float fixedNoiseBias;
 int numFixedNoise;
 float roundingBias;
 int numRounding;
+cluster_stats sumCs;
 
 /*
  *  This happens once per attack.
@@ -67,6 +68,9 @@ initDefense(int maxBuckets) {
   initHighTouchTable();
 }
 
+/*
+ *  This happens once for the whole run
+ */
 initDefenseStats()
 {
   int i;
@@ -88,11 +92,12 @@ initDefenseStats()
   numFixedNoise = 0;
   roundingBias = 0.0;
   numRounding = 0;
+  initClusterStats(&sumCs);
 }
 
 computeDefenseStats(int numRounds, attack_setup *as)
 {
-  int i;
+  int i, j;
 
   if (as->defense >= OtO_DEFENSE) {
     fprintf(as->f, "Num Touches Histogram: ");
@@ -137,6 +142,23 @@ computeDefenseStats(int numRounds, attack_setup *as)
             fixedNoiseBias, numFixedNoise,
             (float)(roundingBias/(float) numRounding),
             roundingBias, numRounding);
+    fprintf(as->f, "      %.2f Clusters, Size: av %.2f, max %.2f, sd %.2f\n", 
+          (float)((float)sumCs.numClusters/(float)numRounds), 
+          (float)(sumCs.sizeS.av/(float)numRounds),
+          (float)(sumCs.sizeS.max/(float)numRounds), 
+          (float)(sumCs.sizeS.sd/(float)numRounds));
+    fprintf(as->f, "      Overlap: total %.2f, av %.2f, max %.2f, sd %.2f\n", 
+          (float)((float)sumCs.totalClusterOverlap/(float)numRounds), 
+          (float)(sumCs.overlapS.av/(float)numRounds), 
+          (float)(sumCs.overlapS.max/(float)numRounds), 
+          (float)(sumCs.overlapS.sd/(float)numRounds));
+    for (j = 0; j < CLUSTER_OVERLAP_HISTOGRAM; j++) {
+      fprintf(as->f, "          %d: av %.2f, max %.2f, sd %.2f\n", j*10, 
+           (float)(sumCs.histS[j].av/(float)numRounds), 
+           (float)(sumCs.histS[j].max/(float)numRounds), 
+           (float)(sumCs.histS[j].sd/(float)numRounds));
+    }
+
   }
 }
 
@@ -153,12 +175,18 @@ freeStoredFilters()
 /*
  *  This happens once per attack.
  */
-endDefense() 
+endDefense(attack_setup *as) 
 {
+  cluster_stats cs;
+
+  getAllClustersStats(&cs);
+  //printClusterStats(&cs, as->f);
+  //printAllClusters();
+  addClusterStats(&sumCs, &cs);
   countNumTouches(numTouches, MAX_TOUCH_COUNT);
+  freeAllClustersList();
   freeStoredFilters();
   free(storedFilters);
-  freeAllClustersList();
 }
 
 float
@@ -338,7 +366,7 @@ finished:
 // clusters.  So we've lowered the threshold to 80.  85 would probably
 // be ok in practice too, but this requires more experimentation.
 #define NEAR_MATCH_THRESHOLD 80
-#define WEAK_MATCH_THRESHOLD 20
+#define WEAK_MATCH_THRESHOLD 15
 #define LOW_COUNT_SOFT_THRESHOLD 5
 #define LOW_COUNT_HARD_THRESHOLD 1
 #define LOW_COUNT_SD 1
@@ -392,7 +420,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
 
     if ((as->defense >= MtM_DEFENSE) && (overlap > WEAK_MATCH_THRESHOLD)) {
       // this is a candidate for an MtM attack.  store for later.
-// zzzz
+      addToCluster(bp, bp1, overlap);
     }
     if (overlap > NEAR_MATCH_THRESHOLD) {
       // filters suggest that there is a lot of overlap
