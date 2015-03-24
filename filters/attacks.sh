@@ -1,10 +1,12 @@
 #!/bin/bash
 
 DIR=$(pwd)
-OUTDIR="/home/francis/attacks/"
+#OUTDIR="/home/francis/attacks/"
+OUTDIR="./"
 
 D_OTO=1
 D_MTO=2
+D_MTM=3
 VFIRST=0
 ALL_CHILD=2
 ALL_LEFT=3
@@ -13,42 +15,28 @@ ATT_YES=0
 ATT_NO=1
 ROUNDS="-a"
 
+for BASE in 2
+do
 for SIDE in $ALL_RIGHT # $ALL_LEFT
 do
-for RIGHT in 2
+for RIGHT in 3
 do
-for LEFT in 1
+for LEFT in 3
 do
 for VIC in $ATT_YES # $ATT_NO
 do
-for SAMP in 40 # 20 40 80
+for SAMP in 20 # 20 40 80
 do
- ./runAttacks -l $LEFT -r $RIGHT -d $D_MTO -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 80 -s $SAMP -t $VIC -u 200 -B 0 -L 0 -R 0 -e 1 $OUTDIR 
+ ./runAttacks -l $LEFT -r $RIGHT -d $D_MTM -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR 
 done
 done
 done
 done
 done
-exit
-
-for s in 5 10 20 40
-do
-  for t in 0 1
-  do
-#./runAttacks -a 0 -d 3 -o 0 -l 0 -c 2 -m 0 -x 0 -r 500 -s $s -t $t $OUTDIR
-    for c in 10 20
-    do
-./runAttacks -a 1 -d 3 -o 0 -l 0 -c $c -m 0 -x 0 -r 500 -s $s -t $t $OUTDIR
-    done
-  done
 done
 
-#Usage: ./runAttacks -a attack -d defense -o victim_order -l victim_location -t victim_attribute -c num_children -m min_chaff -x max_chaff -r num_rounds -s num_samples -e seed -B num_base_blocks_past_min -E num_extra_blocks -W min_left -X max_left -Y min_right -Z max_right <directory>
-#      attack values:
-#          0 = OtO attack
-#          1 = MtO attack
-#          2 = MtM attack
-#     defense values:
+#Usage: ./runAttacks -l min_left -r min_right -L max_left -R max_right -d defense -o victim_order -v victim_location -t victim_attribute -m min_chaff -x max_chaff -a num_rounds -s num_samples -e seed -B num_base_blocks_past_min -u user_per_bucket <directory>
+#      defense values:
 #          0 = basic defense
 #          1 = OtO defense
 #          2 = MtO defense
@@ -66,14 +54,13 @@ done
 #     victim_attribute values:
 #          0 = victim has attribute
 #          1 = victim does not have attribute
-#     num_children between 2 and 20
 #     min_chaff and max_chaff >= 0
 #     num_rounds (for experiment statistical significance) > 0
 #     num_samples (for attack statistical significance) > 0
 #     seed:  any integer
 #     num_base_blocks_past_min >= 0
-#     num_extra_blocks >= 0
+#     users_per_bucket > 0
 #     min_left >= 1
-#     max_left >= min_left
+#     max_left >= min_left (0 means same as min)
 #     min_right >= 1
-#     max_right >= min_right
+#     max_right >= min_right (0 means same as min)

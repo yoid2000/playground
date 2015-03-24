@@ -6,14 +6,13 @@
 #include <math.h>
 #include "./filters.h"
 #include "./attacks.h"
-#include "./utilities.h"
 
 // externs needed to keep compiler from warning
 extern bucket *makeRandomBucket(int arg1);
 extern bucket *makeBucket(int arg1);
 extern int exceedsNoisyThreshold(float arg1, float arg2, float arg3);
 extern float getRandFloat(float arg1, float arg2);
-extern removeFromCluster(bucket *bp);
+extern removeFromCluster(bucket *bp, int freeCluster);
 
 /* 
  * Allocates memory for a bucket of size bsize.
@@ -873,7 +872,7 @@ makeRandomBucket(int bsize)
 
 freeBucket(bucket *bp)
 {
-  removeFromCluster(bp);
+  removeFromCluster(bp, WITH_CLUSTER_FREE);
   free((void *) bp->list);
   free((void *) bp);
 }

@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-#include "./utilities.h"
 #include "./filters.h"
 #include "./normalDist.h"
 
@@ -130,6 +129,22 @@ printStats(unsigned char *str, mystats *s, int header)
   }
   printf("| %d | %.2f | %.2f | %.2f | %.2f | %s |\n",
       s->total, s->av, s->sd, s->min, s->max, str);
+}
+
+initStats(mystats *s)
+{
+  s->av = 0.0;
+  s->max = 0.0;
+  s->min = 0.0;
+  s->sd = 0.0;
+}
+
+addStats(mystats *to, mystats *from)
+{
+  to->av += from->av;
+  to->max += from->max;
+  to->min += from->min;
+  to->sd += from->sd;
 }
 
 getStatsFloat(mystats *s, float *x, int n)

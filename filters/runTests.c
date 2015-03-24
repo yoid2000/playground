@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include "./utilities.h"
 #include "./filters.h"
 
 // needed for test_childCombIterator

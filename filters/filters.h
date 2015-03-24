@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <sys/queue.h>
+#include "./utilities.h"
 
 #define SIZE_CLOSE_THRESH 30
 
@@ -73,6 +74,8 @@ typedef struct hammer_list_entry_t {
   LIST_ENTRY(hammer_list_entry_t) entry;
 } hammer_list_entry;
 
+#define WITHOUT_CLUSTER_FREE 0
+#define WITH_CLUSTER_FREE 1
 #define CLUSTER_OVERLAP_HISTOGRAM 10
 typedef struct cluster_t {
   LIST_HEAD(clusterListHead, bucket_t) head;  // list of buckets
@@ -81,3 +84,10 @@ typedef struct cluster_t {
   int histogram[CLUSTER_OVERLAP_HISTOGRAM];   // stats about overlap
 } cluster;
 
+typedef struct cluster_stats_t {
+  int numClusters;
+  mystats sizeS;
+  int totalClusterOverlap;
+  mystats overlapS;
+  mystats histS[CLUSTER_OVERLAP_HISTOGRAM];
+} cluster_stats;

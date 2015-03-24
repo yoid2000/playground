@@ -3,7 +3,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
-#include "./utilities.h"
 #include "./filters.h"
 
 // externs needed to keep compiler from warning
