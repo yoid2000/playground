@@ -30,6 +30,7 @@ extern bucket * getNextChildComb(child_comb *c,
                                   bucket **sf,
                                   int sfMax);
 extern int countHighTouch(bucket *arg1);
+extern int addToCluster(bucket *new_bp, bucket *prev_bp, int overlap);
 
 
 
@@ -230,7 +231,7 @@ checkNearMatchAndTouchNonOverlap(bucket *new_bp,
 {
   bucket *old_nobp=NULL, *old_obp=NULL, *new_nobp=NULL, *new_obp=NULL;
 
-  if (sizesAreClose(new_bp, old_bp)) {
+  if (sizesAreCloseBucket(new_bp, old_bp, 30)) {
     // the exact bucket size (stored with the filter) provides
     // further evidence that this may be an attack.  So now we
     // need to re-query the other bucket and check exact overlap.
@@ -391,6 +392,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
   int childAdded;
   int adjustment=0;
   int nearMatch;
+  int action;
 
   countUsers(bp);
 
@@ -419,8 +421,10 @@ putBucketDefend(bucket *bp, attack_setup *as)
     overlapHistogram[ohist]++;
 
     if ((as->defense >= MtM_DEFENSE) && (overlap > WEAK_MATCH_THRESHOLD)) {
-      // this is a candidate for an MtM attack.  store for later.
-      addToCluster(bp, bp1, overlap);
+      // this is a candidate for an MtM attack.
+      action = addToCluster(bp, bp1, overlap);
+// zzzz
+      initClusterNearMatches(bp, action);
     }
     if (overlap > NEAR_MATCH_THRESHOLD) {
       // filters suggest that there is a lot of overlap

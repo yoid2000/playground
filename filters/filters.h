@@ -91,3 +91,23 @@ typedef struct cluster_stats_t {
   mystats overlapS;
   mystats histS[CLUSTER_OVERLAP_HISTOGRAM];
 } cluster_stats;
+
+// return values for addToCluster()
+#define CLUSTER_ADD_NO_JOIN 0
+#define CLUSTER_ADD_JOIN 1
+
+/*
+ *  The following used by initClusterNearMatches() and
+ *  getNextClusterNearMatch();
+ */
+#define CLUSTER_CLOSE_SIZE 5
+// quit after this many near-match attack clusters
+#define MAX_NM_CLUSTERS 50
+// only look for attack clusters with up to this many buckets per side
+#define MAX_ATTACK_SIDE 4
+// only examine clusters with this many or fewer buckets
+#define MAX_CLUSTER_SIZE 10
+#define MIN_CLUSTER_SIZE 4  // anything less caught by other mechanisms
+#define CLUSTER_TOO_SMALL (MAX_NM_CLUSTERS+3)
+#define CLUSTER_TOO_BIG (MAX_NM_CLUSTERS+2)
+#define FOUND_MAX_ATTACK_CLUSTERS (MAX_NM_CLUSTERS+1)

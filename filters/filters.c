@@ -154,26 +154,31 @@ setLevelsBasedOnBucketSize(bucket *bp)
 
 /*
  * sizesAreClose() returns 1 if the sizes of the two buckets are
- * within ~30 of each other, or within 1/2 the smaller bucket size
+ * within ~threshold of each other, or within 1/2 the smaller bucket size
  * of each other, whichever is smaller.  Returns 0 otherwise.
  */
 int
-sizesAreClose(bucket *bp1, bucket *bp2) {
-  bucket *bl, *bs;  // large and small
+sizesAreClose(int val1, int val2, int threshold) {
+  int large, small;
   int sizeThresh;
 
-  // force bp1 to be the smaller bucket
-  if (bp1->bsize > bp2->bsize) {
-    bl = bp1;
-    bs = bp2;
+  if (val1 > val2) {
+    large = val1;
+    small = val2;
   }
   else {
-    bl = bp2;
-    bs = bp1;
+    large = val2;
+    small = val1;
   }
-  sizeThresh = ((int)(bs->bsize * 0.5) < SIZE_CLOSE_THRESH)?
-                     (int)(bs->bsize * 0.5):30;
-  return((bl->bsize - bs->bsize) < sizeThresh);
+  sizeThresh = ((int)(small * 0.5) < SIZE_CLOSE_THRESH)?
+                     (int)(small * 0.5):threshold;
+  return((large - small) < sizeThresh);
+}
+
+int
+sizesAreCloseBucket(bucket *bp1, bucket *bp2, int threshold)
+{
+  return(sizesAreClose(bp1->bsize, bp2->bsize, threshold));
 }
 
 // bitNum is between 0 and 1023
@@ -243,7 +248,7 @@ do_sizesAreClose(s1, s2, exp) {
 
   bp1 = makeRandomBucket(s1);
   bp2 = makeRandomBucket(s2);
-  if (sizesAreClose(bp1, bp2) != exp) {
+  if (sizesAreCloseBucket(bp1, bp2, 30) != exp) {
     printf("sizesAreClose Failed, sizes %d and %d\n", s1, s2);
     fail = 1;
   }
