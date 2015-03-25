@@ -33,5 +33,6 @@ main()
   // measureLowOverlapBuckets();
   // test_removeChildComb();
   // test_hammerList();
-  test_clusterList();
+  // test_clusterList();
+  test_initClusterNearMatches();
 }
