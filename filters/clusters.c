@@ -122,7 +122,7 @@ getNextClusterNearMatchComposite(bucket **left_bp, bucket **right_bp)
  * before calling initClusterNearMatches() again.
  */
 int
-initClusterNearMatches(bucket *bp, int action)
+initClusterNearMatches(bucket *bp)
 {
   cluster *cp;
   bucket *ibp;
@@ -156,56 +156,40 @@ initClusterNearMatches(bucket *bp, int action)
 
   // the following is a very brute-force way of checking all combinations.
   // Not sure how to make it substantially more efficient though...
-  if (action == CLUSTER_ADD_NO_JOIN) {
-    // If the bucket bp was added to an existing cluster without joining two
-    // clusters, then we only need to check combinations that include bp.
-    // To do this, we 1) put bp last in the sums list, and 2) start the left
-    // counter, which checks all combinations, from the point where the
-    // most significant bit, which represents bp, is set.  This way, the
-    // most significant bit is set for every checked combination.  The right
-    // counter, by contrast, only covers combinations where the most
-    // significant bit is not set.
-    midValue = maxValue >> 1;
-    for (i = midValue; i < maxValue; i++) {
-      if ((__builtin_popcount(i) < 2) || 
-          (__builtin_popcount(i) > MAX_ATTACK_SIDE)) {
-        continue;
-      }
-      for (j = 1; j < midValue; j++) {
-        if ((__builtin_popcount(j) < 2) ||
-            (__builtin_popcount(j) > MAX_ATTACK_SIDE)) {
-          continue;
-        }
-        if ((i & j) != 0) { continue; }
-        // we have a new combination.  Check its sums.
-        numNearMatch = checkClusterSums(i, j, cp, bp, bucketSums, numNearMatch);
-        if (numNearMatch == MAX_NM_CLUSTERS) {
-          return(FOUND_MAX_ATTACK_CLUSTERS);
-        }
-      }
+
+  // Note that we only check cluster combinations that include the added
+  // bucket bp.
+  // To do this, we 1) put bp last in the sums list, and 2) start the left
+  // counter, which checks all combinations, from the point where the
+  // most significant bit, which represents bp, is set.  This way, the
+  // most significant bit is set for every checked combination.  The right
+  // counter, by contrast, only covers combinations where the most
+  // significant bit is not set.
+
+  // Note that this means, for cases where two clusters were joined, then
+  // there are some bucket combinations between the two clusters that are
+  // not checked for a near match.  This should be ok, because if there were
+  // an attack cluster among the buckets of the two joined clusters, then
+  // it would already have been found.
+
+  // Finally, not that the new bucket bp will always be on the left side
+  // of near-match cluster, and therefore on the left composite bucket.
+  midValue = maxValue >> 1;
+  for (i = midValue; i < maxValue; i++) {
+    if ((__builtin_popcount(i) < 2) || 
+        (__builtin_popcount(i) > MAX_ATTACK_SIDE)) {
+      continue;
     }
-  }
-  else {
-    // when two clusters were joined, then we need to check all the
-    // combinations involving both clusters.  Though not the most
-    // efficient way of doing it, the following loop simply checks all
-    // combinations.
-    for (i = 3; i < maxValue; i++) {
-      if ((__builtin_popcount(i) < 2) || 
-          (__builtin_popcount(i) > MAX_ATTACK_SIDE)) {
+    for (j = 1; j < midValue; j++) {
+      if ((__builtin_popcount(j) < 2) ||
+          (__builtin_popcount(j) > MAX_ATTACK_SIDE)) {
         continue;
       }
-      for (j = i+1; j < maxValue; j++) {
-        if ((__builtin_popcount(j) < 2) ||
-            (__builtin_popcount(j) > MAX_ATTACK_SIDE)) {
-          continue;
-        }
-        if ((i & j) != 0) { continue; }
-        // we have a new combination.  Check its sums.
-        numNearMatch = checkClusterSums(i, j, cp, bp, bucketSums, numNearMatch);
-        if (numNearMatch == MAX_NM_CLUSTERS) {
-          return(FOUND_MAX_ATTACK_CLUSTERS);
-        }
+      if ((i & j) != 0) { continue; }
+      // we have a new combination.  Check its sums.
+      numNearMatch = checkClusterSums(i, j, cp, bp, bucketSums, numNearMatch);
+      if (numNearMatch == MAX_NM_CLUSTERS) {
+        return(FOUND_MAX_ATTACK_CLUSTERS);
       }
     }
   }
@@ -691,8 +675,7 @@ test_clusterList()
   printf("test_clusterList() passed\n");
 }
 
-doOneCNMTest(int numBuckets, int *sizes, 
-             int numWithJoin, int numWithoutJoin, int errorNum)
+doOneCNMTest(int numBuckets, int *sizes, int expected, int errorNum)
 {
   int i, answer;
   bucket *bp1, *bp2;
@@ -703,7 +686,7 @@ doOneCNMTest(int numBuckets, int *sizes,
     bp2 = makeRandomBucket(sizes[i]);
     addToCluster(bp1, bp2, 50);
   }
-  answer = initClusterNearMatches(bp1, CLUSTER_ADD_NO_JOIN);
+  answer = initClusterNearMatches(bp1);
   while(1) {
     getNextClusterNearMatchComposite(&left_bp, &right_bp);
     if (left_bp == NULL) { break; }
@@ -713,25 +696,10 @@ doOneCNMTest(int numBuckets, int *sizes,
     }
     printf("\n");
   }
-  if (answer != numWithoutJoin) {
+  if (answer != expected) {
     printf("test_initClusterNearMatches ERROR1 %d, got%d, expected %d\n", 
-                 errorNum, answer, numWithoutJoin);
+                 errorNum, answer, expected);
     exit(1);
-  }
-  answer = initClusterNearMatches(bp1, CLUSTER_ADD_JOIN);
-  if (answer != numWithJoin) {
-    printf("test_initClusterNearMatches ERROR1 %d, got%d, expected %d\n", 
-                 errorNum, answer, numWithoutJoin);
-    exit(1);
-  }
-  while(1) {
-    getNextClusterNearMatchComposite(&left_bp, &right_bp);
-    if (left_bp == NULL) { break; }
-    printf("Found %d and %d from: ", left_bp->bsize, right_bp->bsize);
-    for (i = 0; i < numBuckets; i++) {
-      printf("%d, ", sizes[i]);
-    }
-    printf("\n");
   }
   freeAllClustersList();
 }
@@ -748,22 +716,22 @@ test_initClusterNearMatches()
   bucket *bp[MAX_CLUSTER_SIZE];
 
   i = 0; s[i++]=600; s[i++]=1000; s[i++]=1200;
-  doOneCNMTest(i, s, CLUSTER_TOO_SMALL, CLUSTER_TOO_SMALL, error++);
+  doOneCNMTest(i, s, CLUSTER_TOO_SMALL, error++);
 
   i = 0; s[i++]=600; s[i++]=1000; s[i++]=1200; s[i++]=1500;
-  doOneCNMTest(i, s, 0, 0, error++);
+  doOneCNMTest(i, s, 0, error++);
 
   i = 0; s[i++]=600; s[i++]=1000; s[i++]=1200; s[i++]=400;
-  doOneCNMTest(i, s, 1, 1, error++);
+  doOneCNMTest(i, s, 1, error++);
 
   i = 0; s[i++]=500; s[i++]=501; s[i++]=502; s[i++]=503;
-  doOneCNMTest(i, s, 3, 3, error++);
+  doOneCNMTest(i, s, 3, error++);
 
   i = 0; s[i++]=600; s[i++]=1000; s[i++]=1200; s[i++]=1500; s[i++]=1000;
-  doOneCNMTest(i, s, 0, 0, error++);
+  doOneCNMTest(i, s, 0, error++);
 
   i = 0; s[i++]=3100; s[i++]=1000; s[i++]=1200; s[i++]=1500; s[i++]=700;
-  doOneCNMTest(i, s, 1, 0, error++);
+  doOneCNMTest(i, s, 0, error++);
   
   printf("test_initClusterNearMatches unit tests passed, now do measurements\n");
   for (size = MIN_CLUSTER_SIZE; size < MAX_CLUSTER_SIZE; size++) {
@@ -774,7 +742,7 @@ test_initClusterNearMatches()
         bp[j] = makeRandomBucket(getRandInteger(50, 1000));
         addToCluster(bp[j-1], bp[j], 50);
       }
-      numMatches = initClusterNearMatches(bp[0], CLUSTER_ADD_NO_JOIN);
+      numMatches = initClusterNearMatches(bp[0]);
       testMeasures[size] += numMatches;
       if (numMatches) {
         printf("%d Composites from: ", numMatches);
