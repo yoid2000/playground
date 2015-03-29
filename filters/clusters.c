@@ -10,6 +10,10 @@ extern bucket *combineBuckets(bucket *bp1, bucket *bp2);
 LIST_HEAD(hammerListHead, hammer_list_entry_t) hammerList;
 LIST_HEAD(allClustersHead, cluster_t) allClustersList;
 
+// stats for the clusters and near matches
+int clusterMatchesBySize[MAX_CLUSTER_SIZE];
+int numClusterMatchesBySize[MAX_CLUSTER_SIZE];
+
 /*
  *  The following used by initClusterNearMatches() and
  *  getNextClusterNearMatchComposite();
@@ -142,7 +146,7 @@ initClusterNearMatches(bucket *bp)
   for (ibp = cp->head.lh_first; ibp != NULL; ibp = ibp->entry.le_next) {
     if (ibp == bp) { continue; }  // bp always goes last
     bucketSums[numBuckets++] = ibp->bsize;
-    if (numBuckets >= MAX_CLUSTER_SIZE) {
+    if (numBuckets >= (MAX_CLUSTER_SIZE-1)) {
       return(CLUSTER_TOO_BIG);    // would be too expensive to check
     }
   }
@@ -352,6 +356,23 @@ joinClusters(cluster *cp1, cluster *cp2)
   }
 }
 
+int
+getClusterSize(bucket *ibp)
+{
+  bucket *bp;
+  cluster *cp;
+  int i=0;
+
+  if ((cp = ibp->clusterHead) == NULL) {
+    printf("initClusterNearMatches() NULL cluster\n");
+    exit(1);
+  }
+  for (bp = cp->head.lh_first; bp != NULL; bp = bp->entry.le_next) {
+    i++;
+  }
+  return(i);
+}
+
 printCluster(cluster *cp)
 {
   bucket *bp;
@@ -381,6 +402,10 @@ initClusterStats(cluster_stats *csp)
   for (i = 0; i < CLUSTER_OVERLAP_HISTOGRAM; i++) {
     initStats(&(csp->histS[i]));
   }
+  for (i = MIN_CLUSTER_SIZE; i < MAX_CLUSTER_SIZE; i++) {
+    csp->numClusterMatchesBySize[i] = 0;
+    csp->clusterMatchesBySize[i] = 0;
+  }
 }
 
 addClusterStats(cluster_stats *to, cluster_stats *from)
@@ -394,9 +419,13 @@ addClusterStats(cluster_stats *to, cluster_stats *from)
   for (i = 0; i < CLUSTER_OVERLAP_HISTOGRAM; i++) {
     addStats(&(to->histS[i]), &(from->histS[i]));
   }
+  for (i = 0; i < MAX_CLUSTER_SIZE; i++) {
+    to->clusterMatchesBySize[i] += from->clusterMatchesBySize[i];
+    to->numClusterMatchesBySize[i] += from->numClusterMatchesBySize[i];
+  }
 }
 
-getAllClustersStats(cluster_stats *csp)
+getAllClusterStats(cluster_stats *csp)
 {
   cluster *cp;
   mystats sizeS, overlapS, histS[CLUSTER_OVERLAP_HISTOGRAM];
@@ -441,38 +470,49 @@ getAllClustersStats(cluster_stats *csp)
   }
 }
 
-printClusterStats(cluster_stats *csp, FILE *f)
+updateClusterNearMatchStats(cluster_stats *csp, int size, int matches)
+{
+  if ((size >= MAX_CLUSTER_SIZE) || (size < MIN_CLUSTER_SIZE)) {
+    printf("updateClusterNearMatchStats ERROR %d (%d)\n", size, matches);
+    printClusterNearMatchStats(csp, stdout);
+    exit(1);
+  }
+  csp->clusterMatchesBySize[size] += matches;
+  csp->numClusterMatchesBySize[size]++;
+}
+
+printClusterNearMatchStats(cluster_stats *csp, FILE *out)
 {
   int j;
 
-  if (f) {
-    fprintf(f, "      %d Clusters, Size: av %.2f, max %.2f, sd %.2f\n", 
-                           csp->numClusters, csp->sizeS.av,
-                           csp->sizeS.max, csp->sizeS.sd);
-    fprintf(f, "      Overlap: total %d, av %.2f, max %.2f, sd %.2f\n", 
-                        csp->totalClusterOverlap, csp->overlapS.av, 
-                        csp->overlapS.max, csp->overlapS.sd);
-    fprintf(f, "      Hist: \n");
-    for (j = 0; j < CLUSTER_OVERLAP_HISTOGRAM; j++) {
-      fprintf(f, "          %d: av %.2f, max %.2f, sd %.2f\n", 
-                        j*10, csp->histS[j].av, 
-                        csp->histS[j].max, csp->histS[j].sd);
+  fprintf(out, "Near-match stats (size, num_trials, num_matches):\n");
+  for (j = MIN_CLUSTER_SIZE; j < MAX_CLUSTER_SIZE; j++) {
+    if (csp->numClusterMatchesBySize[j]) {
+      fprintf(out, "    (%d, %d, %.2f)\n", j,
+                          csp->numClusterMatchesBySize[j],
+                          (float)((float) csp->clusterMatchesBySize[j] /
+                          (float) csp->numClusterMatchesBySize[j]));
     }
   }
-  else {
-    printf("      %d Clusters, Size: av %.2f, max %.2f, sd %.2f\n", 
-                           csp->numClusters, csp->sizeS.av,
-                           csp->sizeS.max, csp->sizeS.sd);
-    printf("      Overlap: total %d, av %.2f, max %.2f, sd %.2f\n", 
-                        csp->totalClusterOverlap, csp->overlapS.av, 
-                        csp->overlapS.max, csp->overlapS.sd);
-    printf("      Hist: \n");
-    for (j = 0; j < CLUSTER_OVERLAP_HISTOGRAM; j++) {
-      printf("          %d: av %.2f, max %.2f, sd %.2f\n", 
-                        j*10, csp->histS[j].av, 
-                        csp->histS[j].max, csp->histS[j].sd);
-    }
+}
+
+printClusterStats(cluster_stats *csp, FILE *out)
+{
+  int j;
+
+  fprintf(out, "      %d Clusters, Size: av %.2f, max %.2f, sd %.2f\n", 
+                         csp->numClusters, csp->sizeS.av,
+                         csp->sizeS.max, csp->sizeS.sd);
+  fprintf(out, "      Overlap: total %d, av %.2f, max %.2f, sd %.2f\n", 
+                      csp->totalClusterOverlap, csp->overlapS.av, 
+                      csp->overlapS.max, csp->overlapS.sd);
+  fprintf(out, "      Hist: \n");
+  for (j = 0; j < CLUSTER_OVERLAP_HISTOGRAM; j++) {
+    fprintf(out, "          %d: av %.2f, max %.2f, sd %.2f\n", 
+                      j*10, csp->histS[j].av, 
+                      csp->histS[j].max, csp->histS[j].sd);
   }
+  printClusterNearMatchStats(csp, out);
 }
 
 printAllClusters()
@@ -481,13 +521,13 @@ printAllClusters()
   cluster_stats cs;
   int i=0;
 
-  getAllClustersStats(&cs);
+  getAllClusterStats(&cs);
   printf("\n******  %d Clusters *******\n", cs.numClusters);
   for (cp = allClustersList.lh_first; cp != NULL; cp = cp->entry.le_next) {
     printf("Cluster %d: %p, size %d\n", i++, cp, cp->num);
     printCluster(cp);
   }
-  printClusterStats(&cs, NULL);
+  printClusterStats(&cs, stdout);
 }
 
 
@@ -548,9 +588,9 @@ runClusterStress(int print)
   while(1) {
     if (++i > 100) {
       i = 0;
-      getAllClustersStats(&cs);
+      getAllClusterStats(&cs);
       if (print) printf("\n");
-      if (print) printClusterStats(&cs, NULL);
+      if (print) printClusterStats(&cs, stdout);
     }
     bp2 = NULL;
     bp1 = bucketList[getRandInteger(0,999)];
@@ -714,6 +754,7 @@ test_initClusterNearMatches()
   int numMatches;
   bucket *left_bp, *right_bp;
   bucket *bp[MAX_CLUSTER_SIZE];
+  cluster_stats cs;
 
   i = 0; s[i++]=600; s[i++]=1000; s[i++]=1200;
   doOneCNMTest(i, s, CLUSTER_TOO_SMALL, error++);
@@ -734,6 +775,8 @@ test_initClusterNearMatches()
   doOneCNMTest(i, s, 0, error++);
   
   printf("test_initClusterNearMatches unit tests passed, now do measurements\n");
+
+  initClusterStats(&cs);
   for (size = MIN_CLUSTER_SIZE; size < MAX_CLUSTER_SIZE; size++) {
     testMeasures[size] = 0;
     for (i = 0; i < 1000; i++) {
@@ -742,8 +785,13 @@ test_initClusterNearMatches()
         bp[j] = makeRandomBucket(getRandInteger(50, 1000));
         addToCluster(bp[j-1], bp[j], 50);
       }
+      if (size != getClusterSize(bp[0])) {
+        printf("test_initClusterNearMatches ERROR3 (%d, %d)\n", 
+                                    size, getClusterSize(bp[0]));
+        exit(1);
+      }
       numMatches = initClusterNearMatches(bp[0]);
-      testMeasures[size] += numMatches;
+      updateClusterNearMatchStats(&cs, size, numMatches);
       if (numMatches) {
         printf("%d Composites from: ", numMatches);
         for (j = 0; j < size; j++) {
@@ -781,8 +829,7 @@ test_initClusterNearMatches()
         freeBucket(bp[j]);
       }
     }
-    printf("    Cluster size %d, average %.2f attack clusters\n", size,
-                          (float)((float) testMeasures[size] / (float) 1000));
+    printClusterNearMatchStats(&cs, stdout);
   }
 }
 

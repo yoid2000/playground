@@ -33,7 +33,6 @@ extern int countHighTouch(bucket *arg1);
 extern int addToCluster(bucket *new_bp, bucket *prev_bp, int overlap);
 
 
-
 bucket **storedFilters;
 int sfIndex; 	// index into above list
 int maxSfIndex;
@@ -159,7 +158,7 @@ computeDefenseStats(int numRounds, attack_setup *as)
            (float)(sumCs.histS[j].max/(float)numRounds), 
            (float)(sumCs.histS[j].sd/(float)numRounds));
     }
-
+    printClusterNearMatchStats(&sumCs, as->f);
   }
 }
 
@@ -180,7 +179,7 @@ endDefense(attack_setup *as)
 {
   cluster_stats cs;
 
-  getAllClustersStats(&cs);
+  getAllClusterStats(&cs);
   //printClusterStats(&cs, as->f);
   //printAllClusters();
   addClusterStats(&sumCs, &cs);
@@ -220,9 +219,9 @@ computeNoisyCount(bucket *bp)
 }
 
 /*
- * Doesn't matter which bucket is bp1 or bp2.
  * Returns 1 if buckets are true near matches
- * returns 0 otherwise
+ * returns 0 otherwise.  Either way, an adjustment for the noisy
+ * count is made.
  */
 int
 checkNearMatchAndTouchNonOverlap(bucket *new_bp, 
@@ -255,7 +254,7 @@ checkNearMatchAndTouchNonOverlap(bucket *new_bp,
       // The non-overlapping users in the former bucket might be attack
       // victims, so we "add" them to the new bucket to compensate
       *adjustment += countHighTouch(old_nobp);
-      // The non-overlapping users in the new bucket might als be attack
+      // The non-overlapping users in the new bucket might also be attack
       // victims, so we "remove" them from the new bucket to compensate
       *adjustment -= countHighTouch(new_nobp);
       free(new_obp);
@@ -389,10 +388,11 @@ putBucketDefend(bucket *bp, attack_setup *as)
   int i, j, overlap, ohist;
   compare c;
   bucket *bp1, *lbp, *rbp;
+  bucket *left_bp, *right_bp;
   int childAdded;
   int adjustment=0;
   int nearMatch;
-  int action;
+  int numMatches;
 
   countUsers(bp);
 
@@ -422,9 +422,17 @@ putBucketDefend(bucket *bp, attack_setup *as)
 
     if ((as->defense >= MtM_DEFENSE) && (overlap > WEAK_MATCH_THRESHOLD)) {
       // this is a candidate for an MtM attack.
-      action = addToCluster(bp, bp1, overlap);
-// zzzz
-      initClusterNearMatches(bp, action);
+      addToCluster(bp, bp1, overlap);
+      numMatches = initClusterNearMatches(bp);
+      if (numMatches <= FOUND_MAX_ATTACK_CLUSTERS) {
+        updateClusterNearMatchStats(&sumCs, getClusterSize(bp), numMatches);
+      }
+      while(1) {
+        getNextClusterNearMatchComposite(&left_bp, &right_bp);
+        if (left_bp == NULL) { break; }
+        nearMatch = checkNearMatchAndTouchNonOverlap(left_bp, right_bp,
+                                                              &adjustment);
+      }
     }
     if (overlap > NEAR_MATCH_THRESHOLD) {
       // filters suggest that there is a lot of overlap

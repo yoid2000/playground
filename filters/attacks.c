@@ -589,9 +589,9 @@ main(int argc, char *argv[])
   printAttackSetup(&as);
 
   //measureClusters(userList, &as, STYLE_FIXED);
-  measureClusters(userList, &as, STYLE_RANDOM);
+  //measureClusters(userList, &as, STYLE_RANDOM);
   //test_getSegregateMask(userList); exit(1);
-  //runAttack(userList, &as);
+  runAttack(userList, &as);
   printf("Done: %s\n", filename);
 }
 
