@@ -179,6 +179,7 @@ endDefense(attack_setup *as)
 {
   cluster_stats cs;
 
+  initClusterStats(&cs);
   getAllClusterStats(&cs);
   //printClusterStats(&cs, as->f);
   //printAllClusters();
@@ -216,6 +217,32 @@ computeNoisyCount(bucket *bp)
   // returning a float here because there are some funny error
   // biases that I don't understand...
   return((float)bp->bsize + noise);
+}
+
+int
+getRealOverlap(bucket *new_bp, bucket *old_bp)
+{
+  bucket *old_nobp=NULL, *old_obp=NULL, *new_nobp=NULL, *new_obp=NULL;
+  int overlap;
+
+  sortBucketList(new_bp);
+  sortBucketList(old_bp);
+  getNonOverlap(new_bp, old_bp, &new_nobp, &old_nobp, &new_obp, &old_obp);
+  if (new_obp->bsize != old_obp->bsize) {
+    printf("getRealOverlap() ERROR\n");
+    exit(1);
+  }
+  if (new_bp->bsize > old_bp->bsize) {
+    overlap = (int)((float)(new_obp->bsize * 100)/(float)(old_bp->bsize));
+  }
+  else {
+    overlap = (int)((float)(new_obp->bsize * 100)/(float)(old_bp->bsize));
+  }
+  free(new_obp);
+  free(old_obp);
+  free(new_nobp);
+  free(old_nobp);
+  return(overlap);
 }
 
 /*
@@ -422,6 +449,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
 
     if ((as->defense >= MtM_DEFENSE) && (overlap > WEAK_MATCH_THRESHOLD)) {
       // this is a candidate for an MtM attack.
+//printf("%p, %p, %d, %d\n", bp, bp1, overlap, getRealOverlap(bp, bp1));
       addToCluster(bp, bp1, overlap);
       numMatches = initClusterNearMatches(bp);
       if (numMatches <= FOUND_MAX_ATTACK_CLUSTERS) {

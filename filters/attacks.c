@@ -154,7 +154,6 @@ makeClusterAndBuckets(mtm_cluster *mc,
                       blocks *block_array,
                       int baseBlocks, 
                       int blockIndex,
-                      int numSamples, 
                       int perfect)
 {
   int mask, max_bsize, shift, block;
@@ -268,7 +267,7 @@ oneAttack(int numSamples,
     }
 
     blockIndex = makeClusterAndBuckets(&mc, as, vbp, userList, block_array,
-                                     baseBlocks, blockIndex, numSamples, 0);
+                                     baseBlocks, blockIndex, 0);
 
 //printMtmCluster(&mc);
 
@@ -831,7 +830,7 @@ runOneCluster(attack_setup *as, bucket *vbp, bucket *userList, int p, int stats)
 
 
   makeClusterAndBuckets(&mc, as, vbp, userList, block_array,
-                                            baseBlocks, 0, 1, p);
+                                            baseBlocks, 0, p);
 
   // the following line of code was for testing
   // if (p == 1) { checkClusterCorrectness(&mc, userList); }
