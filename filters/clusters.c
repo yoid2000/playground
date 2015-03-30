@@ -176,20 +176,18 @@ initClusterNearMatches(bucket *bp)
   // an attack cluster among the buckets of the two joined clusters, then
   // it would already have been found.
 
-  // Finally, not that the new bucket bp will always be on the left side
+  // Finally, note that the new bucket bp will always be on the left side
   // of near-match cluster, and therefore on the left composite bucket.
   midValue = maxValue >> 1;
   for (i = midValue; i < maxValue; i++) {
-    if ((__builtin_popcount(i) < 2) || 
-        (__builtin_popcount(i) > MAX_ATTACK_SIDE)) {
-      continue;
-    }
+    if (__builtin_popcount(i) < 2) { continue; }
     for (j = 1; j < midValue; j++) {
-      if ((__builtin_popcount(j) < 2) ||
-          (__builtin_popcount(j) > MAX_ATTACK_SIDE)) {
+      if (__builtin_popcount(j) < 2) { continue; }
+      if ((i & j) != 0) { continue; }
+      if ((__builtin_popcount(i) + __builtin_popcount(j)) >
+                                                   (MAX_ATTACK_SIDE<<1)) {
         continue;
       }
-      if ((i & j) != 0) { continue; }
       // we have a new combination.  Check its sums.
       numNearMatch = checkClusterSums(i, j, cp, bp, bucketSums, numNearMatch);
       if (numNearMatch == MAX_NM_CLUSTERS) {
@@ -419,7 +417,7 @@ addClusterStats(cluster_stats *to, cluster_stats *from)
   for (i = 0; i < CLUSTER_OVERLAP_HISTOGRAM; i++) {
     addStats(&(to->histS[i]), &(from->histS[i]));
   }
-  for (i = 0; i < MAX_CLUSTER_SIZE; i++) {
+  for (i = MIN_CLUSTER_SIZE; i < MAX_CLUSTER_SIZE; i++) {
     to->clusterMatchesBySize[i] += from->clusterMatchesBySize[i];
     to->numClusterMatchesBySize[i] += from->numClusterMatchesBySize[i];
   }

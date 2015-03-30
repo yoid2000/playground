@@ -1,15 +1,15 @@
 #!/bin/bash
 
 DIR=$(pwd)
-OUTDIR="/home/francis/attacks/"
-#OUTDIR="./"
+#OUTDIR="/home/francis/attacks/"
+OUTDIR="./"
 
 D_OTO=1
 D_MTO=2
 D_MTM=3
 VFIRST=0
 ALL_CHILD=2
-ALL_LEFT=3
+ALL_LEFT=5
 ALL_RIGHT=4
 ATT_YES=0
 ATT_NO=1
@@ -17,17 +17,17 @@ ROUNDS="-a"
 
 for ATTACK in $D_MTM # $D_MTO
 do
-for BASE in 0 4 8
+for BASE in 4 # 0 4 8
 do
 for SIDE in $ALL_RIGHT # $ALL_LEFT
 do
-for RIGHT in 2 3 4 5
+for RIGHT in 2 #2 3 4 5
 do
-for LEFT in 2 3 4 5
+for LEFT in 3 # 2 3 4 5
 do
-for VIC in $ATT_YES $ATT_NO
+for VIC in $ATT_YES # $ATT_NO
 do
-for SAMP in 20 40 80
+for SAMP in 40 # 20 40 80
 do
   echo "./runAttacks -l $LEFT -r $RIGHT -d $ATTACK -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR"
   ./runAttacks -l $LEFT -r $RIGHT -d $ATTACK -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR 

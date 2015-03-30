@@ -400,7 +400,7 @@ makeRandomBucketFromList(int bsize, bucket *userList)
     sprintf(str, "%d", userList->list[index]);
     // for testing purposes only:
     user_id = userList->list[index];
-    // user_id = (unsigned int) quick_hash(str);
+    ///user_id = (unsigned int) quick_hash(str);
     *lp = user_id;
     lp++;
   }
@@ -837,7 +837,7 @@ makeSegregatedBucketFromList(int mask,
       sprintf(str, "%d", userList->list[i]);
       // for testing purposes only:
       user_id = userList->list[i];
-      // user_id = (unsigned int) quick_hash(str);
+      //user_id = (unsigned int) quick_hash(str);
       *lp = user_id;
       lp++;
       bsize++;
