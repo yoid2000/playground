@@ -807,6 +807,65 @@ definePerfectCluster(mtm_cluster *mc, attack_setup *as)
   }
 }
 
+
+int
+putBlocksInBucket(int firstBlock, int numBlocks, 
+                  mtm_cluster *mc, int side, int blockIndex)
+{
+  int i;
+
+  mc->bucket[side][blockIndex].numBlocks = numBlocks;
+  for (i = 0; i < numBlocks; i++) {
+    mc->bucket[side][blockIndex].blocks[i] = firstBlock++;
+  }
+  return(firstBlock);
+}
+
+/*
+ *  A barbell chain looks like this:
+ *      A      Ab
+ *      bC     Cd
+ *      dE     E
+ *
+ *  Where cap letter X is a group of BARBELL_SIZE blocks, and small
+ *  letter x is a single block.
+ */
+defineBarbellChainCluster(mtm_cluster *mc, attack_setup *as)
+{
+  int i, nb, nextBlock, nextBucket;
+
+  if (as->numLeftBuckets != as->numRightBuckets) {
+    printf("defineBarbellChainCluster() ERROR mismatched sides (%d, %d)\n", 
+                                 as->numLeftBuckets, as->numRightBuckets);
+    exit(1);
+  }
+  nb = as->numLeftBuckets;
+  if (nb > MAX_NUM_BUCKETS_PER_SIDE) {
+    printf("defineBarbellChainCluster() ERROR excess buckets (%d)\n", nb);
+    exit(1);
+  }
+  mc->numBuckets[LEFT] = nb;
+  mc->numBuckets[RIGHT] = nb;
+
+  // first do the left side
+  nextBlock = 0;
+  nextBucket = 0;
+  nextBlock = putBlocksInBucket(nextBlock, BARBELL_SIZE, mc, LEFT, nextBucket);
+  for (nextBucket = 1; nextBucket < nb; nextBucket++) {
+    nextBlock = putBlocksInBucket(nextBlock, BARBELL_SIZE+1, 
+                                                mc, LEFT, nextBucket);
+  }
+  // then the right side
+  nextBlock = 0;
+  nextBucket = 0;
+  for (nextBucket = 0; nextBucket < nb-1; nextBucket++) {
+    nextBlock = putBlocksInBucket(nextBlock, BARBELL_SIZE+1, 
+                                                mc, RIGHT, nextBucket);
+  }
+  nextBlock = putBlocksInBucket(nextBlock, BARBELL_SIZE, 
+                                                mc, RIGHT, nextBucket);
+}
+
 bucket *
 makeSegregatedBucketFromList(int mask, 
                              int sampleNum,
@@ -995,6 +1054,20 @@ getFirstChildComb(child_comb *c,
 }
 
 /*********** TESTS **********/
+
+
+test_defineBarbellChainCluster()
+{
+  mtm_cluster mc;
+  attack_setup as;
+
+  as.numLeftBuckets = 4;
+  as.numRightBuckets = 4;
+  defineBarbellChainCluster(&mc, &as);
+  printMtmCluster(&mc);
+
+}
+
 
 doSetChildren(bucket *pbp)
 {

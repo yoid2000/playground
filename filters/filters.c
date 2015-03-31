@@ -3,9 +3,15 @@
 #include <string.h>
 #include <search.h>
 #include <stdlib.h>
-#include "./overlap-values.h"
-#include "./overlap-values2.h"
 #include "./filters.h"
+
+#define OLD_STYLE_FILTER
+
+#ifdef OLD_STYLE_FILTER
+#include "./overlap-values.h"
+#else
+#include "./overlap-values2.h"
+#endif
 
 // externs needed to keep compiler from warning
 extern bucket *makeRandomBucket(int arg1);
@@ -43,7 +49,6 @@ compareFilterPair(one_filter *of1, one_filter *of2, compare *c)
   }
 }
 
-//#define OLD_STYLE_FILTER
 
 /* 
  * Doesn't matter which bucket is bigger coming in.

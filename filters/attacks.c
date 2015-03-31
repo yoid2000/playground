@@ -153,8 +153,7 @@ makeClusterAndBuckets(mtm_cluster *mc,
                       bucket *userList,
                       blocks *block_array,
                       int baseBlocks, 
-                      int blockIndex,
-                      int perfect)
+                      int blockIndex)
 {
   int mask, max_bsize, shift, block;
   int j, s, b;
@@ -164,7 +163,7 @@ makeClusterAndBuckets(mtm_cluster *mc,
 
   getSegregateMask(as, &mask);
 
-  if (perfect == 1) {
+  if (as->clusterType == PERFECT_CLUSTER) {
     definePerfectCluster(mc, as);
     totalNumBlocks = as->numLeftBuckets * as->numRightBuckets;
   }
@@ -267,7 +266,7 @@ oneAttack(int numSamples,
     }
 
     blockIndex = makeClusterAndBuckets(&mc, as, vbp, userList, block_array,
-                                     baseBlocks, blockIndex, 0);
+                                     baseBlocks, blockIndex);
 
 //printMtmCluster(&mc);
 
@@ -397,11 +396,12 @@ printAttackSetup(attack_setup *as)
                                      as->minRightBuckets, as->maxRightBuckets);
   }
 
-  fprintf(as->f, "Attack: %s, %s, %s, %s\n", 
+  fprintf(as->f, "Attack: %s, %s, %s, %s, %s\n", 
                                      as->defense_str[as->defense], 
                                      as->order_str[as->order],
                                      as->location_str[as->location],
-                                     as->attribute_str[as->attribute]);
+                                     as->attribute_str[as->attribute],
+                                     as->clusterType_str[as->clusterType]);
   fprintf(as->f, " chaffMax %d\n", as->chaffMax);
   fprintf(as->f, " chaffMin %d\n", as->chaffMin);
   fprintf(as->f, " numRounds %d\n", as->numRounds);
@@ -413,7 +413,7 @@ printCommandLines(attack_setup *as)
 {
   int i;
 
-  printf("Usage: ./runAttacks -l min_left -r min_right -L max_left -R max_right -d defense -o victim_order -v victim_location -t victim_attribute -m min_chaff -x max_chaff -a num_rounds -s num_samples -e seed -B num_base_blocks_past_min -u user_per_bucket <directory>\n ");
+  printf("Usage: ./runAttacks -l min_left -r min_right -L max_left -R max_right -d defense -o victim_order -v victim_location -t victim_attribute -m min_chaff -x max_chaff -a num_rounds -s num_samples -e seed -B num_base_blocks_past_min -u user_per_bucket -p cluster_type <directory>\n ");
   printf("     defense values:\n");
   for (i = 0; i < NUM_DEFENSES; i++) {
     printf("          %d = %s\n", i, as->defense_str[i]);
@@ -429,6 +429,10 @@ printCommandLines(attack_setup *as)
   printf("     victim_attribute values:\n");
   for (i = 0; i < NUM_ATTRIBUTES; i++) {
     printf("          %d = %s\n", i, as->attribute_str[i]);
+  }
+  printf("     cluster_type values:\n");
+  for (i = 0; i < NUM_CLUSTER_TYPES; i++) {
+    printf("          %d = %s\n", i, as->clusterType_str[i]);
   }
   printf("     min_chaff and max_chaff >= 0\n");
   printf("     num_rounds (for experiment statistical significance) > 0\n");
@@ -470,6 +474,11 @@ main(int argc, char *argv[])
   as.location_str[VICTIM_IN_ALL_LEFT] = "victim in all left";
   as.location_str[VICTIM_IN_ALL_RIGHT] = "victim in all right";
   as.location_str[VICTIM_IN_ONE_RIGHT] = "victim in one right";
+  as.clusterType_str[GENERAL_CLUSTER] = "general cluster";
+  as.clusterType_str[PERFECT_CLUSTER] = "perfect cluster";
+  as.clusterType_str[BARBELL_CHAIN_CLUSTER] = "barbell chain cluster";
+  as.clusterType_str[NUNCHUK_CLUSTER] = "nunchuk cluster";
+  as.clusterType_str[NUNCHUK_BARBELL_CLUSTER] = "nunchuk barbell cluster";
 
   // set defaults
   as.defense = MtO_DEFENSE;
@@ -484,16 +493,20 @@ main(int argc, char *argv[])
   as.numSamples = 10;
   as.numBaseBlocks = 0;
   as.minLeftBuckets = 2;   
-  as.maxLeftBuckets = 0;   // set same as minLeftBuckets
+  as.maxLeftBuckets = 0;   // gets set same as minLeftBuckets
   as.minRightBuckets = 2;   
-  as.maxRightBuckets = 0;    // set same as minRightBuckets
+  as.maxRightBuckets = 0;    // gets set same as minRightBuckets
   as.numLeftBuckets = 0;     // gets set later
   as.numRightBuckets = 0;     // gets set later
+  as.clusterType = GENERAL_CLUSTER;
 
-  while ((c = getopt (argc, argv, "u:l:L:r:R:B:a:d:o:v:t:c:m:x:a:s:e:h?")) != -1) {
+  while ((c = getopt (argc, argv, "c:u:l:L:r:R:B:a:d:o:v:t:m:x:a:s:e:h?")) != -1) {
     sprintf(temp, "%c%s", c, optarg);
     strcat(filename, temp);
     switch (c) {
+      case 'c':
+        as.clusterType = atoi(optarg);
+        break;
       case 'u':
         as.usersPerBucket = atoi(optarg);
         break;
@@ -810,7 +823,7 @@ int *vlow[2], *low[2], *high[2], *vhigh[2];
 int numAbove20, numAbove10;
 int clusterWeight;
 
-runOneCluster(attack_setup *as, bucket *vbp, bucket *userList, int p, int stats)
+runOneCluster(attack_setup *as, bucket *vbp, bucket *userList, int stats)
 {
   mtm_cluster mc;
   int baseBlocks, lastBlock;
@@ -830,7 +843,7 @@ runOneCluster(attack_setup *as, bucket *vbp, bucket *userList, int p, int stats)
 
 
   makeClusterAndBuckets(&mc, as, vbp, userList, block_array,
-                                            baseBlocks, 0, p);
+                                            baseBlocks, 0);
 
   // the following line of code was for testing
   // if (p == 1) { checkClusterCorrectness(&mc, userList); }
@@ -931,7 +944,7 @@ initStatArrays()
   }
 }
 
-reportClusterResults(attack_setup *as, int p)
+reportClusterResults(attack_setup *as)
 {
   int o, total;
   mystats vlowS[2], lowS[2], highS[2], vhighS[2];
@@ -944,7 +957,7 @@ reportClusterResults(attack_setup *as, int p)
     getStatsInt(&highS[o], high[o], high_index[o]);
     getStatsInt(&vhighS[o], vhigh[o], vhigh_index[o]);
     fprintf(as->f, "%d %d %d %4d %3d %d    %d %d     %d %.1f %.1f    %d %.1f %.1f     %d %.1f %.1f     %d %.1f %.1f\n",
-               p, o, as->numLeftBuckets, as->numRightBuckets, 
+               as->clusterType, o, as->numLeftBuckets, as->numRightBuckets, 
                as->usersPerBucket, as->numBaseBlocks,
                (int)((float)(numAbove10 * 100)/(float)NUM_M_TRIALS), 
                (int)((float)(numAbove20 * 100)/(float)NUM_M_TRIALS), 
@@ -990,8 +1003,9 @@ measureClustersRandom(bucket *userList, attack_setup *as)
     as->numBaseBlocks = getRandInteger(0, numBuckets);
 
     as->usersPerBucket = getRandInteger(50, 800);
+    as->clusterType = GENERAL_CLUSTER;
 
-    runOneCluster(as, vbp, userList, 0, 0);
+    runOneCluster(as, vbp, userList, 0);
     fprintf(as->f, "%d %d %d %d %d %d\n", 
                as->numLeftBuckets, as->numRightBuckets, numBuckets, 
                as->usersPerBucket, as->numBaseBlocks, clusterWeight);
@@ -1040,17 +1054,23 @@ measureClustersFixed(bucket *userList, attack_setup *as)
           as->usersPerBucket = size;
           if ((p == 1) && i != 2) { continue; }
           // make perfect cluster if p == 1
+          if (p == 1) {
+            as->clusterType = PERFECT_CLUSTER;
+          }
+          else {
+            as->clusterType = GENERAL_CLUSTER;
+          }
           for (o = 0; o < 2; o++) {
             vlow_index[o]=0, low_index[o]=0, high_index[o]=0, vhigh_index[o]=0;
           }
           numAbove20 = 0;
           numAbove10 = 0;
           for (j = 0; j < NUM_M_TRIALS; j++) {
-            runOneCluster(as, vbp, userList, p, 1);
+            runOneCluster(as, vbp, userList, 1);
           }
           //printMtmCluster(&mc);
           // report the results
-          reportClusterResults(as, p);
+          reportClusterResults(as);
         }
       }
     }
