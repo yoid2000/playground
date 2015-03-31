@@ -33,6 +33,16 @@
 #define VICTIM_IN_ALL_RIGHT 4
 #define VICTIM_IN_ONE_RIGHT 5
 
+// as->clusterType
+#define NUM_CLUSTER_TYPES 5
+#define GENERAL_CLUSTER 0
+#define PERFECT_CLUSTER 1
+#define BARBELL_CHAIN_CLUSTER 2
+#define NUNCHUK_CLUSTER 3
+#define NUNCHUK_BARBELL_CLUSTER 4
+
+#define BARBELL_SIZE 12  // number of blocks in the big block group
+
 typedef struct attack_setup_t {
   int subAttack;
   char *subAttack_str[NUM_SUBTYPES];
@@ -40,10 +50,12 @@ typedef struct attack_setup_t {
   char *defense_str[NUM_DEFENSES];
   int order;
   char *order_str[NUM_ORDERS];
-  int attribute;
-  char *location_str[NUM_VICTIM_LOC];
   int location;
+  char *location_str[NUM_VICTIM_LOC];
+  int attribute;
   char *attribute_str[NUM_ATTRIBUTES];
+  int clusterType;
+  char *clusterType_str[NUM_CLUSTER_TYPES];
   int usersPerBucket;    // target number of users per bucket
   int numBaseBlocks;    // number of blocks *beyond the minimum* 
                            // from which to build attack

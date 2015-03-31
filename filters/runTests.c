@@ -34,5 +34,6 @@ main()
   // test_removeChildComb();
   // test_hammerList();
   // test_clusterList();
-  test_initClusterNearMatches();
+  // test_initClusterNearMatches();
+  test_defineBarbellChainCluster();
 }
