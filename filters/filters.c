@@ -4,6 +4,7 @@
 #include <search.h>
 #include <stdlib.h>
 #include "./overlap-values.h"
+#include "./overlap-values2.h"
 #include "./filters.h"
 
 // externs needed to keep compiler from warning
@@ -42,8 +43,10 @@ compareFilterPair(one_filter *of1, one_filter *of2, compare *c)
   }
 }
 
+//#define OLD_STYLE_FILTER
+
 /* 
- * Doesn't matter which bucket is bigger.
+ * Doesn't matter which bucket is bigger coming in.
  */
 compareFullFilters(bucket *bp1, bucket *bp2, compare *c)
 {
@@ -51,6 +54,7 @@ compareFullFilters(bucket *bp1, bucket *bp2, compare *c)
   int save_i=0, save_j=0, firstTime=1;
   int high, low;
   bucket *bl, *bs;  // large and small
+  float frac;
 
   // force bp1 to be the smaller bucket
   if (bp1->bsize > bp2->bsize) {
@@ -94,6 +98,7 @@ done:
     c->index1 = save_i;
     c->index2 = save_j;
     compareFilterPair(&(bs->filters[save_i]), &(bl->filters[save_j]), c);
+#ifdef OLD_STYLE_FILTER
     if ((i = c->first) >= 800) {
       i = 799;
     }
@@ -108,6 +113,54 @@ done:
     else {
       c->overlap = full_overlap_array[i][j];
     }
+#else
+    if (c->second < c->first) {
+      // It can happen that fewer bits are set for the larger (second) filter
+      // than the first (smaller) filter, especially if the two buckets are
+      // roughly the same size.  Since we only computed the array for the
+      // case where the second filter is at least as big as the first, we
+      // artificially set the second filter.  This is only used to access the
+      // table, so this doesn't mess up the computation.
+      c->second = c->first;
+    }
+    if (c->common <= overlap_array_0[c->first][c->second]) {
+      c->overlap = 0;
+    }
+    else if (c->common <= overlap_array_25[c->first][c->second]) {
+      // overlap is somewhere between 0% and 25%.
+      frac = ((float)(c->common - overlap_array_0[c->first][c->second]) /
+              (float)(overlap_array_25[c->first][c->second] - 
+                                    overlap_array_0[c->first][c->second]));
+      c->overlap = (int)(frac * 25.0);
+    }
+    else if (c->common <= overlap_array_50[c->first][c->second]) {
+      // overlap is somewhere between 25% and 50%.
+      frac = ((float)(c->common - overlap_array_25[c->first][c->second]) /
+              (float)(overlap_array_50[c->first][c->second] - 
+                                    overlap_array_25[c->first][c->second]));
+      c->overlap = 25 + (int)(frac * 25.0);
+    }
+    else if (c->common <= overlap_array_75[c->first][c->second]) {
+      // overlap is somewhere between 50% and 75%.
+      frac = ((float)(c->common - overlap_array_50[c->first][c->second]) /
+              (float)(overlap_array_75[c->first][c->second] - 
+                                    overlap_array_50[c->first][c->second]));
+      c->overlap = 50 + (int)(frac * 25.0);
+    }
+    else {
+      // overlap is somewhere between 75% and 100%.  100% overlap means that
+      // all of the bits in the first filter are also common bits.  So we 
+      // don't need a table lookup.
+      frac = ((float)(c->common - overlap_array_75[c->first][c->second]) /
+                 (float)(c->first - overlap_array_75[c->first][c->second]));
+      c->overlap = 75 + (int)(frac * 25.0);
+    }
+    // this is a bit stupid, but the old-style filter assumed a range
+    // of 0-63, while this new filter assume a range of 0-100.  So we
+    // need to adjust.  (If the new-style works well, we'll get rid of
+    // this).
+    c->overlap = (int)((float)c->overlap / (float) 1.5625);
+#endif
   }
 }
 

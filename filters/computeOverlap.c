@@ -181,6 +181,8 @@ computeOverlapValues(int minBucket,
   for (k = 0; i < NUM_LEVELS; k++) {
     fclose(foo[k]);
   }
+  fclose(fDiff);
+  fclose(scatter);
 }
 
 printCommandLines()

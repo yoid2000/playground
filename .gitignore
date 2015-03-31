@@ -6,5 +6,7 @@ compare/*csv
 filters/runTests
 filters/runAttacks
 filters/computeOverlap
+filters/computeOverlap2
+filters/gdbrun
 */*txt
 */*swp
