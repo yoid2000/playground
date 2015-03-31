@@ -1,1 +1,1 @@
-run -l 3 -r 3 -d 3 -o 0 -v 4 -m 0 -x 0 -a 10 -s 20 -t 0 -u 200 -B 2 -L 0 -R 0 -e 1 /home/francis/attacks/
+run -l 3 -r 2 -d 3 -o 0 -v 4 -m 0 -x 0 -a 10 -s 40 -t 0 -u 200 -B 4 -L 0 -R 0 -e 1 ./

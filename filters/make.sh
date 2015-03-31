@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#gcc -g -o runTests clusters.c hightouch.c buckets.c filters.c runTests.c utilities.c -lm
+gcc -g -o runTests clusters.c hightouch.c buckets.c filters.c runTests.c utilities.c -lm
 echo "runTests done"
 echo "**********************************************************"
 
@@ -8,8 +8,12 @@ gcc -g -o runAttacks clusters.c hightouch.c buckets.c filters.c attacks.c defens
 echo "runAttacks done"
 echo "**********************************************************"
 
-#gcc -g -o computeOverlap clusters.c computeOverlap.c hightouch.c buckets.c filters.c utilities.c -lm
+gcc -g -o computeOverlap clusters.c computeOverlap.c hightouch.c buckets.c filters.c utilities.c -lm
 echo "computeOverlap done"
+echo "**********************************************************"
+
+gcc -g -o computeOverlap2 computeOverlap2.c utilities.c -lm
+echo "computeOverlap2 done"
 
 
 
