@@ -31,6 +31,7 @@ extern bucket * getNextChildComb(child_comb *c,
                                   int sfMax);
 extern int countHighTouch(bucket *arg1);
 extern int addToCluster(bucket *new_bp, bucket *prev_bp, int overlap);
+extern int getRealOverlap(bucket *new_bp, bucket *old_bp);
 
 
 bucket **storedFilters;
@@ -217,32 +218,6 @@ computeNoisyCount(bucket *bp)
   // returning a float here because there are some funny error
   // biases that I don't understand...
   return((float)bp->bsize + noise);
-}
-
-int
-getRealOverlap(bucket *new_bp, bucket *old_bp)
-{
-  bucket *old_nobp=NULL, *old_obp=NULL, *new_nobp=NULL, *new_obp=NULL;
-  int overlap;
-
-  sortBucketList(new_bp);
-  sortBucketList(old_bp);
-  getNonOverlap(new_bp, old_bp, &new_nobp, &old_nobp, &new_obp, &old_obp);
-  if (new_obp->bsize != old_obp->bsize) {
-    printf("getRealOverlap() ERROR\n");
-    exit(1);
-  }
-  if (new_bp->bsize > old_bp->bsize) {
-    overlap = (int)((float)(new_obp->bsize * 100)/(float)(old_bp->bsize));
-  }
-  else {
-    overlap = (int)((float)(new_obp->bsize * 100)/(float)(old_bp->bsize));
-  }
-  free(new_obp);
-  free(old_obp);
-  free(new_nobp);
-  free(old_nobp);
-  return(overlap);
 }
 
 /*

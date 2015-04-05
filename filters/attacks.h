@@ -41,7 +41,7 @@
 #define NUNCHUK_CLUSTER 3
 #define NUNCHUK_BARBELL_CLUSTER 4
 
-#define BARBELL_SIZE 12  // number of blocks in the big block group
+#define BARBELL_SIZE 15  // number of blocks in the big block group
 
 typedef struct attack_setup_t {
   int subAttack;

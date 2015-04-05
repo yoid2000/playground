@@ -14,6 +14,12 @@ extern int exceedsNoisyThreshold(float arg1, float arg2, float arg3);
 extern float getRandFloat(float arg1, float arg2);
 extern removeFromCluster(bucket *bp, int freeCluster);
 
+int
+worstCaseBlocks(attack_setup *as)
+{
+  return(as->numBaseBlocks + as->maxLeftBuckets + as->maxRightBuckets - 1);
+}
+
 /* 
  * Allocates memory for a bucket of size bsize.
  * All entries in the bucket list and filters are zero.
@@ -379,6 +385,35 @@ getNonOverlap3(bucket *mbp, 	// submitted "middle" (new) bucket (sorted)
   *r_mr_nobp = mr_nobp;
 }
 
+int
+getRealOverlap(bucket *new_bp, bucket *old_bp)
+{
+  bucket *old_nobp=NULL, *old_obp=NULL, *new_nobp=NULL, *new_obp=NULL;
+  int overlap;
+
+  sortBucketList(new_bp);
+  sortBucketList(old_bp);
+  getNonOverlap(new_bp, old_bp, &new_nobp, &old_nobp, &new_obp, &old_obp);
+  if (new_obp->bsize != old_obp->bsize) {
+    printf("getRealOverlap() ERROR\n");
+    exit(1);
+  }
+  if (new_obp->bsize != old_obp->bsize) {
+    printf("getRealOverlap() ERROR %d, %d\n", new_obp->bsize, old_obp->bsize);
+  }
+  if (new_bp->bsize > old_bp->bsize) {
+    overlap = (int)((float)(new_obp->bsize * 100)/(float)(old_bp->bsize));
+  }
+  else {
+    overlap = (int)((float)(new_obp->bsize * 100)/(float)(new_bp->bsize));
+  }
+  free(new_obp);
+  free(old_obp);
+  free(new_nobp);
+  free(old_nobp);
+  return(overlap);
+}
+
 /* Ignore duplicate random index (on occasion, may be duplicate
  * user in a given bucket) */
 bucket *
@@ -405,28 +440,6 @@ makeRandomBucketFromList(int bsize, bucket *userList)
     lp++;
   }
   return(bp);
-}
-
-/*
- *  Returns an array of block definitions that must be freed by caller
- */
-blocks *
-defineBlocks(int samples, int blocksPerSample, int *lastBlock)
-{
-  blocks *bap;
-  int i, j, k;
-
-  *lastBlock = samples*blocksPerSample;
-  bap = (blocks *) calloc(*lastBlock, sizeof(blocks));
-  k = 0;
-  for (i = 0; i < samples; i++) {
-    for (j = 0; j < blocksPerSample; j++) {
-      bap[k].sampleNum = i;
-      bap[k].childNum = j;
-      k++;
-    }
-  }
-  return(bap);
 }
 
 printMtmCluster(mtm_cluster *mc)
@@ -765,7 +778,7 @@ defineCluster(mtm_cluster *mc, int baseBlocks, attack_setup *as)
   for (i = 0; i < 10; i++) {
     // try ten times to make a cluster
     if (fullClusterDefined(mc, baseBlocks, as) == 1) {
-      return(1);
+      return(worstCaseBlocks(as) + 1);
     }
   }
   return(0);
@@ -778,6 +791,7 @@ defineCluster(mtm_cluster *mc, int baseBlocks, attack_setup *as)
  *  overlaps with other side buckets on exactly one block.  This
  *  minimizes overlap (making it hard to detect).
  */
+int
 definePerfectCluster(mtm_cluster *mc, attack_setup *as)
 {
   int i, j, nb, b;
@@ -805,6 +819,7 @@ definePerfectCluster(mtm_cluster *mc, attack_setup *as)
       b++;
     }
   }
+  return(as->numLeftBuckets * as->numRightBuckets);
 }
 
 
@@ -864,6 +879,87 @@ defineBarbellChainCluster(mtm_cluster *mc, attack_setup *as)
   }
   nextBlock = putBlocksInBucket(nextBlock, BARBELL_SIZE, 
                                                 mc, RIGHT, nextBucket);
+  return(((BARBELL_SIZE + 1) * nb) - 1);
+}
+
+/*
+ *  A nunchuk cluster looks like this:
+ *      a      aB
+ *      Bc     cD
+ *      De     e
+ *
+ *  Where cap letter X is a group of BARBELL_SIZE blocks, and small
+ *  letter x is a single block.
+ */
+defineNunchukCluster(mtm_cluster *mc, attack_setup *as)
+{
+  int i, nb, nextBlock, nextBucket;
+
+  if ((as->numLeftBuckets != 3) || (as->numRightBuckets != 3)) {
+    printf("defineNunchukCluster() ERROR bad sides (%d, %d)\n", 
+                                 as->numLeftBuckets, as->numRightBuckets);
+    exit(1);
+  }
+  nb = as->numLeftBuckets;
+  mc->numBuckets[LEFT] = nb;
+  mc->numBuckets[RIGHT] = nb;
+
+  // first do the left side
+  nextBlock = 0;
+  nextBucket = 0;
+  nextBlock = putBlocksInBucket(nextBlock, 1, mc, LEFT, nextBucket);
+  for (nextBucket = 1; nextBucket < nb; nextBucket++) {
+    nextBlock = putBlocksInBucket(nextBlock, BARBELL_SIZE+1, 
+                                                mc, LEFT, nextBucket);
+  }
+  // then the right side
+  nextBlock = 0;
+  nextBucket = 0;
+  for (nextBucket = 0; nextBucket < nb-1; nextBucket++) {
+    nextBlock = putBlocksInBucket(nextBlock, BARBELL_SIZE+1, 
+                                                mc, RIGHT, nextBucket);
+  }
+  nextBlock = putBlocksInBucket(nextBlock, 1, mc, RIGHT, nextBucket);
+  return((BARBELL_SIZE * 2) + 3);
+}
+
+/*
+ *  A nunchuk barbell cluster looks like this:
+ *      A      Ab
+ *      bC     Cd
+ *      d
+ *
+ *  Where cap letter X is a group of BARBELL_SIZE blocks, and small
+ *  letter x is a single block.
+ */
+defineNunchukBarbellCluster(mtm_cluster *mc, attack_setup *as)
+{
+  int i, nb, nextBlock, nextBucket;
+
+  if ((as->numLeftBuckets != 3) || (as->numRightBuckets != 2)) {
+    printf("defineNunchukBarbellCluster() ERROR bad sides (%d, %d)\n", 
+                                 as->numLeftBuckets, as->numRightBuckets);
+    exit(1);
+  }
+  nb = as->numLeftBuckets;
+  mc->numBuckets[LEFT] = nb;
+
+  // first do the left side
+  nextBlock = 0;
+  nextBlock = putBlocksInBucket(nextBlock, BARBELL_SIZE, mc, LEFT, 0);
+  nextBlock = putBlocksInBucket(nextBlock, BARBELL_SIZE+1, 
+                                                        mc, LEFT, 1);
+  nextBlock = putBlocksInBucket(nextBlock, 1, mc, LEFT, 2);
+
+  // then the right side
+  nb = as->numRightBuckets;
+  mc->numBuckets[RIGHT] = nb;
+  nextBlock = 0;
+  nextBlock = putBlocksInBucket(nextBlock, BARBELL_SIZE+1, 
+                                                mc, RIGHT, 0);
+  nextBlock = putBlocksInBucket(nextBlock, BARBELL_SIZE+1, 
+                                                mc, RIGHT, 1);
+  return((BARBELL_SIZE * 2) + 2);
 }
 
 bucket *
@@ -1336,27 +1432,6 @@ test_defineCluster()
 fail:
   printMtmCluster(&mc);
   printf("test_fullClusterDefined() FAIL %d\n", fn);
-}
-
-test_defineBlocks()
-{
-  blocks *block_array;
-  int i, j, k, lastBlock;
-
-  block_array = defineBlocks(3, 4, &lastBlock);
-  k = 0;
-  for (i = 0; i < 3; i++) {
-    for (j = 0; j < 4; j++) {
-      if ((block_array[k].sampleNum != i) ||
-          (block_array[k].childNum != j)) {
-        printf("test_defineBlocks() failed\n");
-        exit(1);
-      }
-      k++;
-    }
-  }
-  printf("test_defineBlocks() passed\n");
-  free(block_array);
 }
 
 int numCCChecks=0;
