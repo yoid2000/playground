@@ -23,6 +23,7 @@ extern bucket *makeSegregatedBucketFromList(int mask,
 extern blocks *defineBlocks(int samples, int blocksPerSample, int *lastBlock);
 extern float putBucket(bucket *bp, attack_setup *as);
 extern endDefense(attack_setup *as);
+extern int getRealOverlap(bucket *new_bp, bucket *old_bp);
 
 #define USER_LIST_SIZE 0x100000  
 
@@ -40,17 +41,12 @@ int accSize;
 // small bucket sizes (given that the number of needed
 // segregate buckets can vary widely)
 int
-getSegregateMask(attack_setup *as, int *mask)
+getSegregateMask(attack_setup *as, int *mask, int totalNumBlocks)
 {
-  int totalNumClusterBlocks;
-  int totalNumBlocks;
   int blocksPerBucket;
   int blockSize;
 
-  // the plus 1 is to make sure we compute 2 blocks for the zig-zag case
-  totalNumClusterBlocks = worstCaseBlocks(as) + 1;
-
-  blocksPerBucket = (int)((float)(totalNumClusterBlocks * 2) /
+  blocksPerBucket = (int)((float)(totalNumBlocks * 2) /
                           (float)(as->numLeftBuckets + as->numRightBuckets));
 
   blockSize = (int)((float)(as->usersPerBucket) / (float) blocksPerBucket);
@@ -65,7 +61,7 @@ getSegregateMask(attack_setup *as, int *mask)
     }
     *mask = (*mask << 1) | 1;
   }
-  if (*mask < (totalNumClusterBlocks * as->numSamples)) {
+  if (*mask < (totalNumBlocks * as->numSamples)) {
     printf("getSegregateMask() ERROR can't make enough unique blocks for the attack (%d, %d, %d)\n", *mask, totalNumBlocks, as->numSamples);
     exit(1);
   }
@@ -141,17 +137,10 @@ makeChaffBuckets(bucket *userList, attack_setup *as) {
 }
 
 int
-worstCaseBlocks(attack_setup *as)
-{
-  return(as->numBaseBlocks + as->maxLeftBuckets + as->maxRightBuckets - 1);
-}
-
-int
 makeClusterAndBuckets(mtm_cluster *mc, 
                       attack_setup *as, 
                       bucket *vbp,
                       bucket *userList,
-                      blocks *block_array,
                       int baseBlocks, 
                       int blockIndex)
 {
@@ -161,21 +150,29 @@ makeClusterAndBuckets(mtm_cluster *mc,
   bucket **bbp;   // temporary buckets for each block
   bucket *temp;
 
-  getSegregateMask(as, &mask);
-
   if (as->clusterType == PERFECT_CLUSTER) {
-    definePerfectCluster(mc, as);
-    totalNumBlocks = as->numLeftBuckets * as->numRightBuckets;
+    totalNumBlocks = definePerfectCluster(mc, as);
   }
-  else {
-    if (defineCluster(mc, baseBlocks, as) == 0) {
+  else if (as->clusterType == GENERAL_CLUSTER) {
+    if ((totalNumBlocks = defineCluster(mc, baseBlocks, as)) == 0) {
       printf("makeClusterAndBuckets ERROR %d\n", baseBlocks);
       printAttackSetup(as);
       printMtmCluster(mc);
       exit(1);
     }
-    totalNumBlocks = worstCaseBlocks(as);
   }
+  else if (as->clusterType == BARBELL_CHAIN_CLUSTER) {
+    totalNumBlocks = defineBarbellChainCluster(mc, as);
+  }
+  else if (as->clusterType == NUNCHUK_CLUSTER) {
+    totalNumBlocks = defineNunchukCluster(mc, as);
+  }
+  else if (as->clusterType == NUNCHUK_BARBELL_CLUSTER) {
+    totalNumBlocks = defineNunchukBarbellCluster(mc, as);
+  }
+
+  getSegregateMask(as, &mask, totalNumBlocks);
+
   // build all the per-block user lists
   bbp = (bucket **) calloc(totalNumBlocks, sizeof(bucket *));
   for (j = 0; j < totalNumBlocks; j++) {
@@ -183,8 +180,8 @@ makeClusterAndBuckets(mtm_cluster *mc,
                        *(vbp->list), userList, USER_LIST_SIZE);
     blockIndex++;
     if ((bbp[j])->bsize < 1) {
-      printf("Empty block\n");
-      fprintf(as->f, "Empty block:\n");
+      printf("Empty block (mask %x, blocks %d)\n", mask, totalNumBlocks);
+      fprintf(as->f, "Empty block (mask %x, blocks %d):\n", mask, totalNumBlocks);
       printAttackSetup(as);
     }
     if (blockIndex > mask) {
@@ -211,6 +208,11 @@ makeClusterAndBuckets(mtm_cluster *mc,
     freeBucket(bbp[j]);
   }
   free(bbp);
+
+  // finally, check to see if the real overlaps match the 
+  // expected (block) overlaps
+  checkTrueOverlapAgainstBlockOverlap(mc);
+
   return(blockIndex);
 }
 
@@ -226,7 +228,6 @@ oneAttack(int numSamples,
   mtm_cluster mc;
   bucket *bp[2][MAX_NUM_BUCKETS_PER_SIDE];    // actual buckets
   int s, b;     // side and bucket for bp[][]
-  blocks *block_array = NULL;
   int lastBlock, first_s;
   float sums[2];
   float av1, av2;
@@ -239,8 +240,6 @@ oneAttack(int numSamples,
                    as->maxLeftBuckets, as->maxRightBuckets);
     exit(1);
   }
-
-  block_array = defineBlocks(numSamples, worstCaseBlocks(as), &lastBlock);
 
   // make victim
   vbp = makeRandomBucketFromList(1, userList);
@@ -265,7 +264,7 @@ oneAttack(int numSamples,
       exit(1);
     }
 
-    blockIndex = makeClusterAndBuckets(&mc, as, vbp, userList, block_array,
+    blockIndex = makeClusterAndBuckets(&mc, as, vbp, userList,
                                      baseBlocks, blockIndex);
 
 //printMtmCluster(&mc);
@@ -325,7 +324,6 @@ oneAttack(int numSamples,
     }
   }
   // report
-  free(block_array);
   freeBucket(vbp);
   av1 = (float)(sums[LEFT] / (float) numSamples);
   av2 = (float)(sums[RIGHT] / (float) numSamples);
@@ -600,14 +598,61 @@ main(int argc, char *argv[])
 
   printAttackSetup(&as);
 
-  //measureClusters(userList, &as, STYLE_FIXED);
+  measureClusters(userList, &as, STYLE_FIXED);
   //measureClusters(userList, &as, STYLE_RANDOM);
   //test_getSegregateMask(userList); exit(1);
-  runAttack(userList, &as);
+  //runAttack(userList, &as);
   printf("Done: %s\n", filename);
 }
 
 /************  TESTS ****************/
+
+checkTrueOverlapAgainstBlockOverlap(mtm_cluster *mc) 
+{
+  int s1, s2, b1, b2;  // side and bucket indices
+  float trueOverlap, blockOverlap; 
+  int expectedNumOverlap, actualNumOverlap;
+  int numBlockOverlap;
+  mtm_bucket *mb1, *mb2, *temp;
+  int bl1, bl2;  // block indices
+
+  for (s1 = 0; s1 < 2; s1++) {
+    for (b1 = 0; b1 < mc->numBuckets[s1]; b1++) {
+      for (s2 = s1; s2 < 2; s2++) {
+        for (b2 = 0; b2 < mc->numBuckets[s2]; b2++) {
+          if (secondBucketIsBefore(s1, b1, s2, b2)) { continue; }
+          mb1 = &(mc->bucket[s1][b1]);
+          mb2 = &(mc->bucket[s2][b2]);
+          if (mb1->numBlocks > mb2->numBlocks) {
+            // make mb1 the smaller bucket
+            temp = mb2;
+            mb2 = mb1;
+            mb1 = temp;
+          }
+          numBlockOverlap = 0;
+          // compute block overlap
+          for (bl1 = 0; bl1 < mb1->numBlocks; bl1++) {
+            for (bl2 = 0; bl2 < mb2->numBlocks; bl2++) {
+              if (mb1->blocks[bl1] == mb2->blocks[bl2]) numBlockOverlap++;
+            }
+          }
+          blockOverlap = (float) (numBlockOverlap * 100) / (float) mb1->numBlocks;
+          expectedNumOverlap = (int) (0.01 * blockOverlap * (float) (mb1->bp)->bsize);
+          // compute bucket overlap
+          trueOverlap = (float) getRealOverlap(mb1->bp, mb2->bp);
+          actualNumOverlap = (int) (0.01 * trueOverlap * (float) (mb1->bp)->bsize);
+//printf("%d, %.2f\n", abs(expectedNumOverlap - actualNumOverlap), (blockOverlap / trueOverlap));
+          if ((abs(expectedNumOverlap - actualNumOverlap) > 20) &&
+              (((blockOverlap / trueOverlap) < 0.85) ||
+               ((blockOverlap / trueOverlap) > 1.15))) {
+            printf("checkTrueOverlapAgainstBlockOverlap() ERROR block %.2f (%d), true %.2f (%d), \n(s1=%d, b1=%d (size %d); s2=%d, b2=%d (size %d))\n", blockOverlap, expectedNumOverlap, trueOverlap, actualNumOverlap, s1, b1, (mb1->bp)->bsize, s2, b2, (mb2->bp)->bsize);
+            printMtmCluster(mc);
+          }
+        }
+      }
+    }
+  }
+}
 
 #define WITHOUT_OVERLAP 0
 #define WITH_OVERLAP 1
@@ -695,14 +740,15 @@ checkClusterCorrectness(mtm_cluster *mc, bucket *userList)
   }
 }
 
-#define NUM_M_TRIALS 100
+//#define NUM_M_TRIALS 100
+#define NUM_M_TRIALS 1
 #define MIN_B_PER_SIDE 2
 #define MAX_B_PER_SIDE 16
 #define NO_OVERLAP_VALUE 200	// not a valid value (> 100)
 #define BUCKET_IS_CONNECTED 1
 #define BUCKET_NOT_CONNECTED 0
 #define BNUM(b,s) ((b<<1)+s)
-int overlap_array[MAX_B_PER_SIDE][MAX_B_PER_SIDE];
+int overlap_array[MAX_B_PER_SIDE<<1][MAX_B_PER_SIDE<<1];
 
 /*
  *  Returns one if the second bucket is equal to or earlier than
@@ -724,8 +770,8 @@ initOverlapArray()
 {
   int i, j;
 
-  for (i = 0; i < MAX_B_PER_SIDE; i++) {
-    for (j = 0; j < MAX_B_PER_SIDE; j++) {
+  for (i = 0; i < MAX_B_PER_SIDE<<1; i++) {
+    for (j = 0; j < MAX_B_PER_SIDE<<1; j++) {
       overlap_array[i][j] = NO_OVERLAP_VALUE;
     }
   }
@@ -827,7 +873,6 @@ runOneCluster(attack_setup *as, bucket *vbp, bucket *userList, int stats)
 {
   mtm_cluster mc;
   int baseBlocks, lastBlock;
-  blocks *block_array = NULL;
   bucket *temp;
   int s1, b1, s2, b2, o;
   compare c;
@@ -838,12 +883,10 @@ runOneCluster(attack_setup *as, bucket *vbp, bucket *userList, int stats)
   initCluster(&mc);
   initOverlapArray();
   baseBlocks = as->numBaseBlocks + 
-             as->numLeftBuckets + as->numRightBuckets - 1;
-  block_array = defineBlocks(1, worstCaseBlocks(as), &lastBlock);
+                 as->numLeftBuckets + as->numRightBuckets - 1;
 
 
-  makeClusterAndBuckets(&mc, as, vbp, userList, block_array,
-                                            baseBlocks, 0);
+  makeClusterAndBuckets(&mc, as, vbp, userList, baseBlocks, 0);
 
   // the following line of code was for testing
   // if (p == 1) { checkClusterCorrectness(&mc, userList); }
@@ -863,16 +906,17 @@ runOneCluster(attack_setup *as, bucket *vbp, bucket *userList, int stats)
   // measure overlap between all pairs of buckets
   for (s1 = 0; s1 < 2; s1++) {
     for (b1 = 0; b1 < mc.numBuckets[s1]; b1++) {
-      if (stats) {
+      if ((stats) && (as->clusterType != NUNCHUK_CLUSTER) &&
+               (as->clusterType != NUNCHUK_BARBELL_CLUSTER)) {
         // check bucket size within specs (only use for symmetric clusters)
         if ((mc.bucket[s1][b1].bp)->bsize > (as->usersPerBucket * 3)) {
-          printf("measureClusters() ERROR bucket too big (%d of %d)\n",
+          printf("runOneCluster() ERROR bucket too big (%d of %d)\n",
                  (mc.bucket[s1][b1].bp)->bsize, as->usersPerBucket);
           exit(1);
         }
         if ((mc.bucket[s1][b1].bp)->bsize < 
                 (int)((float)(as->usersPerBucket) / (float)3.0)) {
-          printf("measureClusters() ERROR bucket too small (%d of %d)\n",
+          printf("runOneCluster() ERROR bucket too small (%d of %d)\n",
                  (mc.bucket[s1][b1].bp)->bsize, as->usersPerBucket);
           printMtmCluster(&mc);
           printAllClusterBuckets(&mc);
@@ -914,15 +958,11 @@ runOneCluster(attack_setup *as, bucket *vbp, bucket *userList, int stats)
       mc.bucket[s1][b1].bp = NULL;  // shouldn't be necessary...
     }
   }
-  free(block_array);
   connectThreshold = computeConnectedClusterThreshold(as, &mc);
-  //printOverlapArray(&mc);
-  //printMtmCluster(&mc);
-  //printf("%d %d %d %d %d %d\n", 
-             //p, as->numLeftBuckets, as->numRightBuckets, 
-             //as->usersPerBucket, as->numBaseBlocks,
-             //connectThreshold);
-  //fflush(NULL);
+//printOverlapArray(&mc);
+//printMtmCluster(&mc);
+//printf("%d %d %d %d %d %d\n", as->clusterType, as->numLeftBuckets, as->numRightBuckets, as->usersPerBucket, as->numBaseBlocks, connectThreshold);
+//fflush(NULL);
   if (connectThreshold >= 20) {
     numAbove20++;
   }
@@ -1016,7 +1056,7 @@ measureClustersRandom(bucket *userList, attack_setup *as)
 measureClustersFixed(bucket *userList, attack_setup *as)
 {
   int numBuckets;
-  int p, i, j, o;
+  int i, j, o;
   int mask, max_bsize, shift;
   bucket **bbp;   // temporary buckets for each block
   bucket *temp, *vbp;  // victim
@@ -1031,13 +1071,12 @@ measureClustersFixed(bucket *userList, attack_setup *as)
   // make victim
   vbp = makeRandomBucketFromList(1, userList);
 
-  for (numBuckets = MIN_B_PER_SIDE; numBuckets <= MAX_B_PER_SIDE; numBuckets *= 2) {
-    as->minLeftBuckets = numBuckets;
-    as->maxLeftBuckets = numBuckets;
-    as->minRightBuckets = numBuckets;
-    as->maxRightBuckets = numBuckets;
-    as->numLeftBuckets = numBuckets;
-    as->numRightBuckets = numBuckets;
+  as->clusterType = GENERAL_CLUSTER;
+  for (numBuckets = MIN_B_PER_SIDE; numBuckets <= MAX_B_PER_SIDE; 
+                                                         numBuckets *= 2) {
+    as->minLeftBuckets = numBuckets; as->maxLeftBuckets = numBuckets;
+    as->minRightBuckets = numBuckets; as->maxRightBuckets = numBuckets;
+    as->numLeftBuckets = numBuckets; as->numRightBuckets = numBuckets;
     for (i = 0; i <= 2; i++) {
       if (i == 0) {as->numBaseBlocks = 0;}
       else if (i == 1) {as->numBaseBlocks = numBuckets;}
@@ -1045,36 +1084,104 @@ measureClustersFixed(bucket *userList, attack_setup *as)
         as->numBaseBlocks = (int) pow((float) numBuckets, (float) i) -
                              as->numLeftBuckets - as->numRightBuckets + 1;
       }
-      for (p = 0; p < 2; p++) {
-        for (size = 50; size <= 400; size *= 2) {
-          if (((float)(size * numBuckets) / (float)as->numBaseBlocks) < 5.0) {
-            // would produce empty buckets...
-            continue;
-          }
-          as->usersPerBucket = size;
-          if ((p == 1) && i != 2) { continue; }
-          // make perfect cluster if p == 1
-          if (p == 1) {
-            as->clusterType = PERFECT_CLUSTER;
-          }
-          else {
-            as->clusterType = GENERAL_CLUSTER;
-          }
-          for (o = 0; o < 2; o++) {
-            vlow_index[o]=0, low_index[o]=0, high_index[o]=0, vhigh_index[o]=0;
-          }
-          numAbove20 = 0;
-          numAbove10 = 0;
-          for (j = 0; j < NUM_M_TRIALS; j++) {
-            runOneCluster(as, vbp, userList, 1);
-          }
-          //printMtmCluster(&mc);
-          // report the results
-          reportClusterResults(as);
+      for (size = 50; size <= 400; size *= 2) {
+        if (((float)(size * numBuckets) / (float)as->numBaseBlocks) < 5.0) {
+          // would produce empty buckets...
+          continue;
         }
+        as->usersPerBucket = size;
+        for (o = 0; o < 2; o++) {
+          vlow_index[o]=0, low_index[o]=0, high_index[o]=0, vhigh_index[o]=0;
+        }
+        numAbove20 = 0;
+        numAbove10 = 0;
+        for (j = 0; j < NUM_M_TRIALS; j++) {
+          runOneCluster(as, vbp, userList, 1);
+        }
+        // report the results
+        reportClusterResults(as);
       }
     }
   }
+
+  as->clusterType = PERFECT_CLUSTER;
+  for (numBuckets = MIN_B_PER_SIDE; numBuckets <= MAX_B_PER_SIDE; 
+                                                         numBuckets *= 2) {
+    as->minLeftBuckets = numBuckets; as->maxLeftBuckets = numBuckets;
+    as->minRightBuckets = numBuckets; as->maxRightBuckets = numBuckets;
+    as->numLeftBuckets = numBuckets; as->numRightBuckets = numBuckets;
+    for (size = 100; size <= 400; size *= 2) {
+      as->usersPerBucket = size;
+      for (o = 0; o < 2; o++) {
+        vlow_index[o]=0, low_index[o]=0, high_index[o]=0, vhigh_index[o]=0;
+      }
+      numAbove20 = 0;
+      numAbove10 = 0;
+      for (j = 0; j < NUM_M_TRIALS; j++) {
+        runOneCluster(as, vbp, userList, 1);
+      }
+      // report the results
+      reportClusterResults(as);
+    }
+  }
+
+  as->clusterType = BARBELL_CHAIN_CLUSTER;
+  for (numBuckets = MIN_B_PER_SIDE; numBuckets <= MAX_B_PER_SIDE; 
+                                                         numBuckets *= 2) {
+    as->minLeftBuckets = numBuckets; as->maxLeftBuckets = numBuckets;
+    as->minRightBuckets = numBuckets; as->maxRightBuckets = numBuckets;
+    as->numLeftBuckets = numBuckets; as->numRightBuckets = numBuckets;
+    for (size = 100; size <= 400; size *= 2) {
+      as->usersPerBucket = size;
+      for (o = 0; o < 2; o++) {
+        vlow_index[o]=0, low_index[o]=0, high_index[o]=0, vhigh_index[o]=0;
+      }
+      numAbove20 = 0;
+      numAbove10 = 0;
+      for (j = 0; j < NUM_M_TRIALS; j++) {
+        runOneCluster(as, vbp, userList, 1);
+      }
+      // report the results
+      reportClusterResults(as);
+    }
+  }
+
+  as->clusterType = NUNCHUK_CLUSTER;
+  as->minLeftBuckets = 3; as->maxLeftBuckets = 3;
+  as->minRightBuckets = 3; as->maxRightBuckets = 3;
+  as->numLeftBuckets = 3; as->numRightBuckets = 3;
+  for (size = 100; size <= 400; size *= 2) {
+    as->usersPerBucket = size;
+    for (o = 0; o < 2; o++) {
+      vlow_index[o]=0, low_index[o]=0, high_index[o]=0, vhigh_index[o]=0;
+    }
+    numAbove20 = 0;
+    numAbove10 = 0;
+    for (j = 0; j < NUM_M_TRIALS; j++) {
+      runOneCluster(as, vbp, userList, 1);
+    }
+    // report the results
+    reportClusterResults(as);
+  }
+
+  as->clusterType = NUNCHUK_BARBELL_CLUSTER;
+  as->minLeftBuckets = 3; as->maxLeftBuckets = 3;
+  as->minRightBuckets = 2; as->maxRightBuckets = 2;
+  as->numLeftBuckets = 3; as->numRightBuckets = 2;
+  for (size = 100; size <= 400; size *= 2) {
+    as->usersPerBucket = size;
+    for (o = 0; o < 2; o++) {
+      vlow_index[o]=0, low_index[o]=0, high_index[o]=0, vhigh_index[o]=0;
+    }
+    numAbove20 = 0;
+    numAbove10 = 0;
+    for (j = 0; j < NUM_M_TRIALS; j++) {
+      runOneCluster(as, vbp, userList, 1);
+    }
+    // report the results
+    reportClusterResults(as);
+  }
+
   freeBucket(vbp);
 }
 
@@ -1086,42 +1193,4 @@ measureClusters(bucket *userList, attack_setup *as, int style)
   else if (style == STYLE_RANDOM) {
     measureClustersRandom(userList, as);
   }
-}
-
-do_getSegregateMask(bucket *userList, attack_setup *as)
-{
-  int mask;
-  bucket *bp;
-  int baseBlocks;
-  mtm_cluster mc;
-
-  getSegregateMask(as, &mask);
-
-  printf("\n%d samples, %d left, %d right, %d blocks, %d users, mask %x (%d)\n",
-                     as->numSamples, as->numLeftBuckets, 
-                     as->numRightBuckets, as->numBaseBlocks, 
-                     as->usersPerBucket, mask, mask);
-  printf("%d users per block\n", (int)((float)USER_LIST_SIZE/(float)mask));
-
-  baseBlocks = as->numBaseBlocks + 
-                 as->numLeftBuckets + as->numRightBuckets - 1;
-  if (defineCluster(&mc, baseBlocks, as) == 0) {
-    printf("ERROR defineCluster failed\n");
-  }
-  printMtmCluster(&mc);
-}
-
-test_getSegregateMask(bucket *userList)
-{
-  attack_setup as;
-
-  as.numBaseBlocks = 0;
-  as.usersPerBucket = 200;
-  as.numLeftBuckets = 1;
-  as.numSamples = 20;
-  as.maxLeftBuckets = as.numLeftBuckets;
-  as.numRightBuckets = as.numLeftBuckets;
-  as.maxRightBuckets = as.numRightBuckets;
-
-  do_getSegregateMask(userList, &as);
 }
