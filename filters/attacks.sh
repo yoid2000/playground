@@ -2,35 +2,76 @@
 
 DIR=$(pwd)
 #OUTDIR="/home/francis/attacks/"
-OUTDIR="./"
+OUTDIR="/root/paul/attacks/"
+#OUTDIR="./"
 
 D_OTO=1
 D_MTO=2
 D_MTM=3
 VFIRST=0
 ALL_CHILD=2
-ALL_LEFT=5
+ALL_LEFT=3
 ALL_RIGHT=4
 ATT_YES=0
 ATT_NO=1
 ROUNDS="-a"
+A_GEN=0
+A_PER=1
+A_BAR=2
+A_NUN=3
+A_NUNBAR=4
 
-for ATTACK in $D_MTM # $D_MTO
+for ATTACK in $A_GEN
 do
-for BASE in 4 # 0 4 8
+for DEFENSE in $D_MTM # $D_MTO
+do
+for BASE in 0
 do
 for SIDE in $ALL_RIGHT # $ALL_LEFT
 do
-for RIGHT in 2 #2 3 4 5
+for RIGHT in 2 # 3 5 8
 do
-for LEFT in 3 # 2 3 4 5
+for LEFT in 2 # 3 5 8
 do
 for VIC in $ATT_YES # $ATT_NO
 do
-for SAMP in 40 # 20 40 80
+for SAMP in 10 # 20 40 80
 do
-  echo "./runAttacks -l $LEFT -r $RIGHT -d $ATTACK -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR"
-  ./runAttacks -l $LEFT -r $RIGHT -d $ATTACK -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR 
+  echo "./newAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR"
+  ./newAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR 
+  echo "./oldAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR"
+  ./oldAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR 
+done
+done
+done
+done
+done
+done
+done
+done
+exit
+
+for ATTACK in $A_GEN
+do
+for DEFENSE in $D_MTM # $D_MTO
+do
+for BASE in 0 4 8
+do
+for SIDE in $ALL_RIGHT # $ALL_LEFT
+do
+for RIGHT in 2 3 5 8
+do
+for LEFT in 2 3 5 8
+do
+for VIC in $ATT_YES $ATT_NO
+do
+for SAMP in 10 20 40 80
+do
+  echo "./newAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR"
+  ./newAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR 
+  echo "./oldAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR"
+  ./oldAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR 
+done
 done
 done
 done
@@ -39,7 +80,50 @@ done
 done
 done
 
-#Usage: ./runAttacks -l min_left -r min_right -L max_left -R max_right -d defense -o victim_order -v victim_location -t victim_attribute -m min_chaff -x max_chaff -a num_rounds -s num_samples -e seed -B num_base_blocks_past_min -u user_per_bucket <directory>
+for ATTACK in $A_PER $A_BAR
+do
+for DEFENSE in $D_MTM # $D_MTO
+do
+for SIDE in $ALL_RIGHT # $ALL_LEFT
+do
+for LEFT in 2 3 5 8
+do
+for VIC in $ATT_YES $ATT_NO
+do
+for SAMP in 10 20 40 80
+do
+  echo "./newAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR"
+  ./newAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR 
+  echo "./oldAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR"
+  ./oldAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR 
+done
+done
+done
+done
+done
+done
+
+for ATTACK in $A_NUN $A_NUNBAR
+do
+for DEFENSE in $D_MTM # $D_MTO
+do
+for SIDE in $ALL_RIGHT # $ALL_LEFT
+do
+for VIC in $ATT_YES $ATT_NO
+do
+for SAMP in 10 20 40 80
+do
+  echo "./newAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR"
+  ./newAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR 
+  echo "./oldAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR"
+  ./oldAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -t $VIC -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR 
+done
+done
+done
+done
+done
+
+#Usage: ./newAttacks -c $ATTACK -l min_left -r min_right -L max_left -R max_right -d defense -o victim_order -v victim_location -t victim_attribute -m min_chaff -x max_chaff -a num_rounds -s num_samples -e seed -B num_base_blocks_past_min -u user_per_bucket <directory>
 #      defense values:
 #          0 = basic defense
 #          1 = OtO defense

@@ -5,6 +5,8 @@ compare/a.out
 compare/*csv
 filters/runTests
 filters/runAttacks
+filters/newAttacks
+filters/oldAttacks
 filters/computeOverlap
 filters/computeOverlap2
 filters/gdbrun
