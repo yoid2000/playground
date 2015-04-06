@@ -4,8 +4,12 @@ gcc -g -o runTests clusters.c hightouch.c buckets.c filters.c runTests.c utiliti
 echo "runTests done"
 echo "**********************************************************"
 
-gcc -g -o runAttacks clusters.c hightouch.c buckets.c filters.c attacks.c defenses.c utilities.c -lm
-echo "runAttacks done"
+gcc -g -o oldAttacks -D OLD_STYLE_FILTER clusters.c hightouch.c buckets.c filters.c attacks.c defenses.c utilities.c -lm
+echo "oldAttacks done"
+echo "**********************************************************"
+
+gcc -g -o newAttacks clusters.c hightouch.c buckets.c filters.c attacks.c defenses.c utilities.c -lm
+echo "newAttacks done"
 echo "**********************************************************"
 
 #gcc -g -o computeOverlap clusters.c computeOverlap.c hightouch.c buckets.c filters.c utilities.c -lm

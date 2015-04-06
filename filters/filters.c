@@ -5,8 +5,6 @@
 #include <stdlib.h>
 #include "./filters.h"
 
-#define OLD_STYLE_FILTER
-
 #ifdef OLD_STYLE_FILTER
 #include "./overlap-values.h"
 #else

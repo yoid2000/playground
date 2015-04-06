@@ -137,39 +137,17 @@ makeChaffBuckets(bucket *userList, attack_setup *as) {
 }
 
 int
-makeClusterAndBuckets(mtm_cluster *mc, 
+makeBucketsFromCluster(mtm_cluster *mc, 
                       attack_setup *as, 
                       bucket *vbp,
                       bucket *userList,
-                      int baseBlocks, 
+                      int totalNumBlocks,
                       int blockIndex)
 {
   int mask, max_bsize, shift, block;
   int j, s, b;
-  int totalNumBlocks;
   bucket **bbp;   // temporary buckets for each block
   bucket *temp;
-
-  if (as->clusterType == PERFECT_CLUSTER) {
-    totalNumBlocks = definePerfectCluster(mc, as);
-  }
-  else if (as->clusterType == GENERAL_CLUSTER) {
-    if ((totalNumBlocks = defineCluster(mc, baseBlocks, as)) == 0) {
-      printf("makeClusterAndBuckets ERROR %d\n", baseBlocks);
-      printAttackSetup(as);
-      printMtmCluster(mc);
-      exit(1);
-    }
-  }
-  else if (as->clusterType == BARBELL_CHAIN_CLUSTER) {
-    totalNumBlocks = defineBarbellChainCluster(mc, as);
-  }
-  else if (as->clusterType == NUNCHUK_CLUSTER) {
-    totalNumBlocks = defineNunchukCluster(mc, as);
-  }
-  else if (as->clusterType == NUNCHUK_BARBELL_CLUSTER) {
-    totalNumBlocks = defineNunchukBarbellCluster(mc, as);
-  }
 
   getSegregateMask(as, &mask, totalNumBlocks);
 
@@ -185,7 +163,7 @@ makeClusterAndBuckets(mtm_cluster *mc,
       printAttackSetup(as);
     }
     if (blockIndex > mask) {
-      printf("makeClusterAndBuckets() ERROR blockIndex (%d) too big (%d)\n",
+      printf("makeBucketsFromCluster() ERROR blockIndex (%d) too big (%d)\n",
                                                          blockIndex, mask);
       exit(1);
     }
@@ -241,6 +219,10 @@ oneAttack(int numSamples,
     exit(1);
   }
 
+  baseBlocks = defineCluster(&mc, as);
+
+  lastBlock = numSamples * baseBlocks;
+
   // make victim
   vbp = makeRandomBucketFromList(1, userList);
   for (i = 0; i < numSamples; i++) {
@@ -249,8 +231,6 @@ oneAttack(int numSamples,
                                                   as->maxLeftBuckets);
     as->numRightBuckets = getRandInteger(as->minRightBuckets, 
                                                   as->maxRightBuckets);
-    baseBlocks = as->numBaseBlocks + 
-                 as->numLeftBuckets + as->numRightBuckets - 1;
 
     if ((blockIndex + baseBlocks) > lastBlock) {
       printf("oneAttack ERROR2 %d, %d, %d, %d\n", i, blockIndex, baseBlocks,
@@ -259,13 +239,8 @@ oneAttack(int numSamples,
       exit(1);
     }
 
-    if (baseBlocks > MAX_NUM_BLOCKS) {
-      printf("oneAttack ERROR3 %d\n",  baseBlocks);
-      exit(1);
-    }
-
-    blockIndex = makeClusterAndBuckets(&mc, as, vbp, userList,
-                                     baseBlocks, blockIndex);
+    blockIndex = makeBucketsFromCluster(&mc, as, vbp, userList, baseBlocks,
+                                                                blockIndex);
 
 //printMtmCluster(&mc);
 
@@ -564,6 +539,21 @@ main(int argc, char *argv[])
   }
   srand48((long int) seed);
 
+  if (as.clusterType == NUNCHUK_CLUSTER) {
+    as.maxLeftBuckets = as.minLeftBuckets = 3;
+    as.maxRightBuckets = as.minRightBuckets = 3;
+  }
+  else if (as.clusterType == NUNCHUK_BARBELL_CLUSTER) {
+    as.maxLeftBuckets = as.minLeftBuckets = 3;
+    as.maxRightBuckets = as.minRightBuckets = 2;
+  }
+  else if ((as.clusterType == PERFECT_CLUSTER) ||
+           (as.clusterType == BARBELL_CHAIN_CLUSTER)) {
+    // sides must be symmetric
+    as.minRightBuckets = as.minLeftBuckets;  
+    as.maxRightBuckets = as.maxLeftBuckets;
+  }
+
   if (as.maxLeftBuckets == 0) {
     as.maxLeftBuckets = as.minLeftBuckets;
   }
@@ -574,7 +564,11 @@ main(int argc, char *argv[])
   ran = quick_hash(filename) & 0xfff;
   sprintf(temp, ".%d", ran);
   strcat(filename, temp);
-  strcat(filename, ".txt");
+#ifdef OLD_STYLE_FILTER
+  strcat(filename, ".old.txt");
+#else
+  strcat(filename, ".new.txt");
+#endif
 
   if (optind == argc) {
     strcpy(dir, "./");
@@ -598,10 +592,10 @@ main(int argc, char *argv[])
 
   printAttackSetup(&as);
 
-  measureClusters(userList, &as, STYLE_FIXED);
+  //measureClusters(userList, &as, STYLE_FIXED);
   //measureClusters(userList, &as, STYLE_RANDOM);
   //test_getSegregateMask(userList); exit(1);
-  //runAttack(userList, &as);
+  runAttack(userList, &as);
   printf("Done: %s\n", filename);
 }
 
@@ -642,11 +636,11 @@ checkTrueOverlapAgainstBlockOverlap(mtm_cluster *mc)
           trueOverlap = (float) getRealOverlap(mb1->bp, mb2->bp);
           actualNumOverlap = (int) (0.01 * trueOverlap * (float) (mb1->bp)->bsize);
 //printf("%d, %.2f\n", abs(expectedNumOverlap - actualNumOverlap), (blockOverlap / trueOverlap));
-          if ((abs(expectedNumOverlap - actualNumOverlap) > 20) &&
-              (((blockOverlap / trueOverlap) < 0.85) ||
-               ((blockOverlap / trueOverlap) > 1.15))) {
+          if ((abs(expectedNumOverlap - actualNumOverlap) > 30) &&
+              (((blockOverlap / trueOverlap) < 0.75) ||
+               ((blockOverlap / trueOverlap) > 1.25))) {
             printf("checkTrueOverlapAgainstBlockOverlap() ERROR block %.2f (%d), true %.2f (%d), \n(s1=%d, b1=%d (size %d); s2=%d, b2=%d (size %d))\n", blockOverlap, expectedNumOverlap, trueOverlap, actualNumOverlap, s1, b1, (mb1->bp)->bsize, s2, b2, (mb2->bp)->bsize);
-            printMtmCluster(mc);
+            //printMtmCluster(mc);
           }
         }
       }
@@ -740,8 +734,7 @@ checkClusterCorrectness(mtm_cluster *mc, bucket *userList)
   }
 }
 
-//#define NUM_M_TRIALS 100
-#define NUM_M_TRIALS 1
+#define NUM_M_TRIALS 100
 #define MIN_B_PER_SIDE 2
 #define MAX_B_PER_SIDE 16
 #define NO_OVERLAP_VALUE 200	// not a valid value (> 100)
@@ -872,8 +865,8 @@ int clusterWeight;
 runOneCluster(attack_setup *as, bucket *vbp, bucket *userList, int stats)
 {
   mtm_cluster mc;
-  int baseBlocks, lastBlock;
   bucket *temp;
+  int baseBlocks;
   int s1, b1, s2, b2, o;
   compare c;
   int overlap;
@@ -882,11 +875,9 @@ runOneCluster(attack_setup *as, bucket *vbp, bucket *userList, int stats)
   clusterWeight = 0;
   initCluster(&mc);
   initOverlapArray();
-  baseBlocks = as->numBaseBlocks + 
-                 as->numLeftBuckets + as->numRightBuckets - 1;
 
-
-  makeClusterAndBuckets(&mc, as, vbp, userList, baseBlocks, 0);
+  baseBlocks = defineCluster(&mc, as);
+  makeBucketsFromCluster(&mc, as, vbp, userList, baseBlocks, 0);
 
   // the following line of code was for testing
   // if (p == 1) { checkClusterCorrectness(&mc, userList); }

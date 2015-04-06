@@ -29,11 +29,11 @@ main()
   // test_getNonOverlap3();
   // test_linkedList();
   // test_defineBlocks();
-  // test_defineCluster();
+  test_defineCluster();
   // measureLowOverlapBuckets();
   // test_removeChildComb();
   // test_hammerList();
   // test_clusterList();
   // test_initClusterNearMatches();
-  test_defineBarbellChainCluster();
+  // test_defineBarbellChainCluster();
 }
