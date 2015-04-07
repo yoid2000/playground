@@ -71,7 +71,8 @@ typedef struct attack_setup_t {
   int numRounds;  // number of attack repeats 
                   // (needed for statistical significance)
   int numSamples; // number of attack samples
-  FILE *f;
+  FILE *f;	  // for text output
+  FILE *plot;     // for gnuplot-friendly output
 } attack_setup;
 
 // the routine that produces a block expects two values as input,
