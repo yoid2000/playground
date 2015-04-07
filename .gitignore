@@ -11,4 +11,5 @@ filters/computeOverlap
 filters/computeOverlap2
 filters/gdbrun
 */*txt
+*/*data
 */*swp

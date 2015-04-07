@@ -26,7 +26,7 @@ A_NUNBAR=4
 
 for ATTACK in $A_GEN
 do
-for DEFENSE in $D_NONE # $D_MTO
+for DEFENSE in $D_MTM # $D_MTO
 do
 for BASE in 0
 do
@@ -36,7 +36,7 @@ for RIGHT in 2 # 3 5 8
 do
 for LEFT in 2 # 3 5 8
 do
-for SAMP in 10 # 20 40 80
+for SAMP in 20 # 20 40 80
 do
   echo "./newAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR"
   ./newAttacks -c $ATTACK -l $LEFT -r $RIGHT -d $DEFENSE -o $VFIRST -v $SIDE -m 0 -x 0 $ROUNDS 10 -s $SAMP -u 200 -B $BASE -L 0 -R 0 -e 1 $OUTDIR 

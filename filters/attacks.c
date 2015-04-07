@@ -88,6 +88,7 @@ computeFinalAttackStats(int numSamples, attack_setup *as)
                               rightGuesses[VICTIM_ATTRIBUTE_NO]) / 
                               (float) (as->numRounds * 2)) * 100.0);
 
+  fprintf(as->plot, "%d\n", totalRight);
   fprintf(as->f, "\n%d samples, totalRight %d%%\n", numSamples, totalRight);
 }
 
@@ -95,6 +96,8 @@ computeAttackStats(int numSamples, attack_setup *as, int attr)
 {
   mystats accS, diffS;
 
+  fprintf(as->plot, "%d ", 
+         (int)(((float) rightGuesses[attr] / (float) as->numRounds) * 100.0));
   getStatsFloat(&accS, accuracy, accIndex);
   getStatsFloat(&diffS, diffAttackDiffs, attackRoundNum);
   fprintf(as->f, "\n%d samples, Right %d%%, answers: av %.2f, sd = %.2f, error: av = %.2f, sd = %.2f (%s)\n",
@@ -377,6 +380,8 @@ runAttack(bucket *userList, attack_setup *as)
 
 printAttackSetup(attack_setup *as)
 {
+  int filterType;
+
   if ((as->maxRightBuckets == as->minRightBuckets) &&
       (as->maxLeftBuckets == as->minLeftBuckets)) {
     fprintf(as->f, "%d:%d ", as->minLeftBuckets, as->minRightBuckets);
@@ -385,6 +390,26 @@ printAttackSetup(attack_setup *as)
     fprintf(as->f, "%d(%d):%d(%d) ", as->minLeftBuckets, as->maxLeftBuckets,
                                      as->minRightBuckets, as->maxRightBuckets);
   }
+
+#ifdef OLD_STYLE_FILTER
+  filterType = 0;
+#else
+  filterType = 1;
+#endif
+  fprintf(as->plot, "filter left right cluster defense v_order v_loc chaff_max chaff_min rounds samples base users right_with_attr right_wout_attr total_right\n");
+  fprintf(as->plot, "%d %d %d %d %d %d %d %d %d %d %d %d %d ", filterType,
+                                     as->numLeftBuckets,
+                                     as->numRightBuckets,
+                                     as->clusterType,
+                                     as->defense,
+                                     as->order,
+                                     as->location,
+                                     as->chaffMax,
+                                     as->chaffMin,
+                                     as->numRounds,
+                                     as->numSamples,
+                                     as->numBaseBlocks,
+                                     as->usersPerBucket);
 
   fprintf(as->f, "Attack: %s, %s, %s, %s, %s, ", 
                                      as->defense_str[as->defense], 
@@ -401,7 +426,6 @@ printAttackSetup(attack_setup *as)
   fprintf(as->f, " chaffMin %d\n", as->chaffMin);
   fprintf(as->f, " numRounds %d\n", as->numRounds);
   fprintf(as->f, " numSamples %d\n", as->numSamples);
-  fprintf(as->f, " numBaseBlocks %d\n", as->numBaseBlocks);
   fprintf(as->f, " numBaseBlocks %d\n", as->numBaseBlocks);
   fprintf(as->f, " usersPerBucket %d\n", as->usersPerBucket);
 }
@@ -451,7 +475,7 @@ main(int argc, char *argv[])
   bucket *userList;
   attack_setup as;
   int ran, c, seed=0;
-  unsigned char path[378], dir[128], filename[256], temp[32];
+  unsigned char path[378], dir[128], filename[256], temp[32], plotname[256];
 
   filename[0] = '\0';
 
@@ -589,10 +613,13 @@ main(int argc, char *argv[])
   ran = quick_hash(filename) & 0xfff;
   sprintf(temp, ".%d", ran);
   strcat(filename, temp);
+  strcpy(plotname, filename);
 #ifdef OLD_STYLE_FILTER
   strcat(filename, ".old.txt");
+  strcat(plotname, ".old.data");
 #else
   strcat(filename, ".new.txt");
+  strcat(plotname, ".new.data");
 #endif
 
   if (optind == argc) {
@@ -604,6 +631,11 @@ main(int argc, char *argv[])
 
   sprintf(path, "%s%s", dir, filename);
   if ((as.f = fopen(path, "w")) == NULL) {
+    printf("Couldn't open file %s\n", path);
+    exit(1);
+  }
+  sprintf(path, "%s%s", dir, plotname);
+  if ((as.plot = fopen(path, "w")) == NULL) {
     printf("Couldn't open file %s\n", path);
     exit(1);
   }
