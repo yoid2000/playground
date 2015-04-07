@@ -509,7 +509,11 @@ putBucket(bucket *bp, attack_setup *as)
     adjustment = putBucketDefend(bp, as);
     numAdjust += adjustment;
   }
-  noisyCount = computeNoisyCount(bp) + (float)adjustment;
-
-  return(noisyCount);
+  if (as->defense >= BASIC_DEFENSE) {
+    noisyCount = computeNoisyCount(bp) + (float)adjustment;
+    return(noisyCount);
+  }
+  else {
+    return((float) bp->bsize);
+  }
 }
