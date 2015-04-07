@@ -1,6 +1,6 @@
 #!/bin/bash
 
-gcc -g -o runTests clusters.c hightouch.c buckets.c filters.c runTests.c utilities.c -lm
+#gcc -g -o runTests clusters.c hightouch.c buckets.c filters.c runTests.c utilities.c -lm
 echo "runTests done"
 echo "**********************************************************"
 

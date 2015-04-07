@@ -29,9 +29,8 @@ extern int getRealOverlap(bucket *new_bp, bucket *old_bp);
 
 float *diffAttackDiffs;
 int attackRoundNum;
-int rightGuesses;
-int wrongGuesses;
-int notSure;
+int rightGuesses[NUM_ATTRIBUTES];
+int wrongGuesses[NUM_ATTRIBUTES];
 
 float *accuracy;
 int accIndex;
@@ -81,15 +80,27 @@ initAttackStats(int numSamples, attack_setup *as)
   accIndex = 0;
 }
 
-computeAttackStats(int numSamples, attack_setup *as) {
+computeFinalAttackStats(int numSamples, attack_setup *as) 
+{
+  int totalRight;
+
+  totalRight = (int)((float)((rightGuesses[VICTIM_ATTRIBUTE_YES] + 
+                              rightGuesses[VICTIM_ATTRIBUTE_NO]) / 
+                              (float) (as->numRounds * 2)) * 100.0);
+
+  fprintf(as->f, "\n%d samples, totalRight %d%%\n", numSamples, totalRight);
+}
+
+computeAttackStats(int numSamples, attack_setup *as, int attr)
+{
   mystats accS, diffS;
 
   getStatsFloat(&accS, accuracy, accIndex);
   getStatsFloat(&diffS, diffAttackDiffs, attackRoundNum);
-  fprintf(as->f, "\n%d samples, right %d%%, answers: av %.2f, sd = %.2f, error: av = %.2f, sd = %.2f\n",
+  fprintf(as->f, "\n%d samples, right %d%%, answers: av %.2f, sd = %.2f, error: av = %.2f, sd = %.2f (%s)\n",
          numSamples,
-         (int)(((float) rightGuesses / (float) as->numRounds) * 100.0),
-         diffS.av, diffS.sd, accS.av, accS.sd);
+         (int)(((float) rightGuesses[attr] / (float) as->numRounds) * 100.0),
+         diffS.av, diffS.sd, accS.av, accS.sd, as->attribute_str[attr]);
   fprintf(as->f, "            answers: av %.2f, sd = %.2f, min = %.2f, max = %.2f\n",
          diffS.av, diffS.sd, diffS.min, diffS.max);
   fprintf(as->f, "            error: av %.2f, sd = %.2f, min = %.2f, max = %.2f\n",
@@ -219,6 +230,11 @@ oneAttack(int numSamples,
     exit(1);
   }
 
+  as->numLeftBuckets = getRandInteger(as->minLeftBuckets, 
+                                                  as->maxLeftBuckets);
+  as->numRightBuckets = getRandInteger(as->minRightBuckets, 
+                                                  as->maxRightBuckets);
+
   baseBlocks = defineCluster(&mc, as);
 
   lastBlock = numSamples * baseBlocks;
@@ -227,10 +243,6 @@ oneAttack(int numSamples,
   vbp = makeRandomBucketFromList(1, userList);
   for (i = 0; i < numSamples; i++) {
     makeChaffBuckets(userList, as);
-    as->numLeftBuckets = getRandInteger(as->minLeftBuckets, 
-                                                  as->maxLeftBuckets);
-    as->numRightBuckets = getRandInteger(as->minRightBuckets, 
-                                                  as->maxRightBuckets);
 
     if ((blockIndex + baseBlocks) > lastBlock) {
       printf("oneAttack ERROR2 %d, %d, %d, %d\n", i, blockIndex, baseBlocks,
@@ -311,21 +323,23 @@ makeDecision(float answer, attack_setup *as)
     case VICTIM_ATTRIBUTE_YES:
       switch(as->location) {
         case VICTIM_IN_ALL_LEFT:
-          if (answer <= -0.5) { rightGuesses++; }
-          else { wrongGuesses++; }
+          if (answer <= -0.5) { rightGuesses[VICTIM_ATTRIBUTE_YES]++; }
+          else { wrongGuesses[VICTIM_ATTRIBUTE_YES]++; }
           break;
         case VICTIM_IN_ALL_RIGHT:
         case VICTIM_IN_ONE_RIGHT:
-          if (answer >= 0.5) { rightGuesses++; }
-          else { wrongGuesses++; }
+          if (answer >= 0.5) { rightGuesses[VICTIM_ATTRIBUTE_YES]++; }
+          else { wrongGuesses[VICTIM_ATTRIBUTE_YES]++; }
           break;
         default:
           printf("makeDecision() should not get here 6\n"); exit(1);
       }
       break;
     case VICTIM_ATTRIBUTE_NO:
-      if ((answer < 0.5) && (answer > -0.5)) { rightGuesses++; }
-      else { wrongGuesses++; }
+      if ((answer < 0.5) && (answer > -0.5)) { 
+        rightGuesses[VICTIM_ATTRIBUTE_NO]++; 
+      }
+      else { wrongGuesses[VICTIM_ATTRIBUTE_NO]++; }
       break;
     default:
       printf("makeDecision() should not get here 3\n"); exit(1);
@@ -334,28 +348,31 @@ makeDecision(float answer, attack_setup *as)
 
 runAttack(bucket *userList, attack_setup *as)
 {
-  int confidence;   // between 0 and 100 percent
-  int i, numSamples;
+  int i, numSamples, attr;
   float answer;
   
-  initDefenseStats();
-  initAttackStats(as->numSamples, as);
-  rightGuesses = 0;
-  notSure = 0;
-  wrongGuesses = 0;
-  for (i = 0; i < as->numRounds; i++) {
-    initDefense(10000);
-    answer = oneAttack(as->numSamples, userList, as);
-    makeDecision(answer, as);
-    endDefense(as);
-    if (attackRoundNum == as->numRounds) {
-      printf("runAttack(): bad attackRoundNum %d\n", attackRoundNum);
-      exit(1);
+  for (attr = 0; attr < NUM_ATTRIBUTES; attr++) {
+    as->attribute = attr;
+    fprintf(as->f, "Attack: %s\n", as->attribute_str[attr]);
+    initDefenseStats();
+    initAttackStats(as->numSamples, as);
+    rightGuesses[attr] = 0;
+    wrongGuesses[attr] = 0;
+    for (i = 0; i < as->numRounds; i++) {
+      initDefense(10000);
+      answer = oneAttack(as->numSamples, userList, as);
+      makeDecision(answer, as);
+      endDefense(as);
+      if (attackRoundNum == as->numRounds) {
+        printf("runAttack(): bad attackRoundNum %d\n", attackRoundNum);
+        exit(1);
+      }
+      diffAttackDiffs[attackRoundNum++] = answer;
     }
-    diffAttackDiffs[attackRoundNum++] = answer;
+    computeAttackStats(as->numSamples, as, attr);
+    computeDefenseStats(as->numRounds, as);
   }
-  computeAttackStats(as->numSamples, as);
-  computeDefenseStats(as->numRounds, as);
+  computeFinalAttackStats(as->numSamples, as);
 }
 
 printAttackSetup(attack_setup *as)
@@ -369,17 +386,24 @@ printAttackSetup(attack_setup *as)
                                      as->minRightBuckets, as->maxRightBuckets);
   }
 
-  fprintf(as->f, "Attack: %s, %s, %s, %s, %s\n", 
+  fprintf(as->f, "Attack: %s, %s, %s, %s, %s, ", 
                                      as->defense_str[as->defense], 
                                      as->order_str[as->order],
                                      as->location_str[as->location],
                                      as->attribute_str[as->attribute],
                                      as->clusterType_str[as->clusterType]);
+#ifdef OLD_STYLE_FILTER
+  fprintf(as->f, "old style filter\n");
+#else
+  fprintf(as->f, "new style filter\n");
+#endif
   fprintf(as->f, " chaffMax %d\n", as->chaffMax);
   fprintf(as->f, " chaffMin %d\n", as->chaffMin);
   fprintf(as->f, " numRounds %d\n", as->numRounds);
   fprintf(as->f, " numSamples %d\n", as->numSamples);
   fprintf(as->f, " numBaseBlocks %d\n", as->numBaseBlocks);
+  fprintf(as->f, " numBaseBlocks %d\n", as->numBaseBlocks);
+  fprintf(as->f, " usersPerBucket %d\n", as->usersPerBucket);
 }
 
 printCommandLines(attack_setup *as)

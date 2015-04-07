@@ -483,7 +483,7 @@ printClusterNearMatchStats(cluster_stats *csp, FILE *out)
 {
   int j;
 
-  fprintf(out, "Near-match stats (size, num_trials, num_matches):\n");
+  fprintf(out, "Near-match stats (cluster size, num_trials, num_near_count_matches):\n");
   for (j = MIN_CLUSTER_SIZE; j < MAX_CLUSTER_SIZE; j++) {
     if (csp->numClusterMatchesBySize[j]) {
       fprintf(out, "    (%d, %d, %.2f)\n", j,

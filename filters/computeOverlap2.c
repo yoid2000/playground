@@ -4,7 +4,11 @@
 #include <stdio.h>
 #include <math.h>
 #include "./filters.h"
+#define COMPUTE_COMPLETE_ARRAYS 1
+
+#ifndef COMPUTE_COMPLETE_ARRAYS
 #include "./overlap-values2.h"
+#endif
 
 extern float getRandFloat(float arg1, float arg2);
 
@@ -88,7 +92,7 @@ computeOneOverlap(int x, int y, int o)
   return(common);
 }
 
-#define PRINT_ARRAYS_FOR_GNUPLOT
+//#define PRINT_ARRAYS_FOR_GNUPLOT
 #ifdef PRINT_ARRAYS_FOR_GNUPLOT
 main(int argc, char *argv[])
 {
@@ -146,7 +150,7 @@ main(int argc, char *argv[])
 
   for (o = 0; o < 100; o += 25) {
     printf("unsigned short overlap_array_%d[1024][1024] = {\n", o);
-    for (x = 1; x < 1024; x++) {
+    for (x = 0; x < 1024; x++) {
       printf("  {     // [%d][0]\n    ", x);
       for (y = 0; y < 1024; y++) {
         commonSum = 0;
