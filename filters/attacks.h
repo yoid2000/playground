@@ -3,11 +3,12 @@
 
 // describing what defenses should be used.  These must be in
 // increasing order as shown
-#define NUM_DEFENSES 4
-#define BASIC_DEFENSE 0
-#define OtO_DEFENSE 1
-#define MtO_DEFENSE 2
-#define MtM_DEFENSE 3
+#define NUM_DEFENSES 5
+#define NO_DEFENSE 0
+#define BASIC_DEFENSE 1
+#define OtO_DEFENSE 2
+#define MtO_DEFENSE 3
+#define MtM_DEFENSE 4
 
 // Where to place victim in order of attack buckets
 #define NUM_ORDERS 2

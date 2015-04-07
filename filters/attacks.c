@@ -97,7 +97,7 @@ computeAttackStats(int numSamples, attack_setup *as, int attr)
 
   getStatsFloat(&accS, accuracy, accIndex);
   getStatsFloat(&diffS, diffAttackDiffs, attackRoundNum);
-  fprintf(as->f, "\n%d samples, right %d%%, answers: av %.2f, sd = %.2f, error: av = %.2f, sd = %.2f (%s)\n",
+  fprintf(as->f, "\n%d samples, Right %d%%, answers: av %.2f, sd = %.2f, error: av = %.2f, sd = %.2f (%s)\n",
          numSamples,
          (int)(((float) rightGuesses[attr] / (float) as->numRounds) * 100.0),
          diffS.av, diffS.sd, accS.av, accS.sd, as->attribute_str[attr]);
@@ -455,6 +455,7 @@ main(int argc, char *argv[])
 
   filename[0] = '\0';
 
+  as.defense_str[NO_DEFENSE] = "no defense";
   as.defense_str[BASIC_DEFENSE] = "basic defense";
   as.defense_str[OtO_DEFENSE] = "OtO defense"; 
   as.defense_str[MtO_DEFENSE] = "MtO defense"; 

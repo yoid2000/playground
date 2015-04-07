@@ -5,14 +5,16 @@ DIR=$(pwd)
 #OUTDIR="/root/paul/attacks/"
 OUTDIR="./"
 
-D_BASIC=0
-D_OTO=1
-D_MTO=2
-D_MTM=3
+D_NONE=0
+D_BASIC=1
+D_OTO=2
+D_MTO=3
+D_MTM=4
 VFIRST=0
 ALL_CHILD=2
 ALL_LEFT=3
 ALL_RIGHT=4
+ONE_RIGHT=5
 ATT_YES=0
 ATT_NO=1
 ROUNDS="-a"
@@ -24,7 +26,7 @@ A_NUNBAR=4
 
 for ATTACK in $A_GEN
 do
-for DEFENSE in $D_MTM # $D_MTO
+for DEFENSE in $D_NONE # $D_MTO
 do
 for BASE in 0
 do
