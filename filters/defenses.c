@@ -33,6 +33,19 @@ extern int countHighTouch(bucket *arg1);
 extern int addToCluster(bucket *new_bp, bucket *prev_bp, int overlap);
 extern int getRealOverlap(bucket *new_bp, bucket *old_bp);
 
+// A NEAR_MATCH_THRESHOLD of 90 was failing with high numbers of
+// children (i.e. 5), because a single match would be missed on most
+// clusters.  So we've lowered the threshold to 80.  85 would probably
+// be ok in practice too, but this requires more experimentation.
+#define NEAR_MATCH_THRESHOLD 80
+#ifdef OLD_STYLE_FILTER
+#define WEAK_MATCH_THRESHOLD 15
+#else
+#define WEAK_MATCH_THRESHOLD 15
+#endif
+#define LOW_COUNT_SOFT_THRESHOLD 5
+#define LOW_COUNT_HARD_THRESHOLD 1
+#define LOW_COUNT_SD 1
 
 bucket **storedFilters;
 int sfIndex; 	// index into above list
@@ -120,17 +133,18 @@ computeDefenseStats(int numRounds, attack_setup *as)
            (float)((float)numLowCount/(float)numRounds), 
            (float)((float)numComparisons/(float)numRounds));
     if (numComparisons != 0) {
-    fprintf(as->f, "%.2f (%d%%) past digest\n", 
+    fprintf(as->f, "%.2f (%d%%) pairs past digest (near (%d%%) match)\n", 
            (float)((float)numPastDigest/(float)numRounds), 
-            (int)((float)(numPastDigest*100)/(float) numComparisons));
+            (int)((float)(numPastDigest*100)/(float) numComparisons),
+            NEAR_MATCH_THRESHOLD);
     }
     if (numPastDigest != 0) {
-    fprintf(as->f, "%.2f (%d%%) close sizes\n", 
+    fprintf(as->f, "%.2f (%d%%) close count sizes\n", 
            (float)((float)numCloseSize/(float)numRounds), 
             (int)((float)(numCloseSize*100)/(float) numPastDigest));
     }
     if (numCloseSize != 0) {
-    fprintf(as->f, "%.2f (%d%%) small overlaps\n", 
+    fprintf(as->f, "%.2f (%d%%) small full-measured overlaps\n", 
            (float)((float)numSmallOverlap/(float)numRounds), 
             (int)((float)(numSmallOverlap*100)/(float) numCloseSize));
     }
@@ -148,7 +162,7 @@ computeDefenseStats(int numRounds, attack_setup *as)
           (float)(sumCs.sizeS.av/(float)numRounds),
           (float)(sumCs.sizeS.max/(float)numRounds), 
           (float)(sumCs.sizeS.sd/(float)numRounds));
-    fprintf(as->f, "      Overlap: total %.2f, av %.2f, max %.2f, sd %.2f\n", 
+    fprintf(as->f, "      Cluster Overlap: total %.2f, av %.2f, max %.2f, sd %.2f\n", 
           (float)((float)sumCs.totalClusterOverlap/(float)numRounds), 
           (float)(sumCs.overlapS.av/(float)numRounds), 
           (float)(sumCs.overlapS.max/(float)numRounds), 
@@ -363,15 +377,6 @@ finished:
     of size 5 or greater, then block.
 */
 
-// A NEAR_MATCH_THRESHOLD of 90 was failing with high numbers of
-// children (i.e. 5), because a single match would be missed on most
-// clusters.  So we've lowered the threshold to 80.  85 would probably
-// be ok in practice too, but this requires more experimentation.
-#define NEAR_MATCH_THRESHOLD 80
-#define WEAK_MATCH_THRESHOLD 15
-#define LOW_COUNT_SOFT_THRESHOLD 5
-#define LOW_COUNT_HARD_THRESHOLD 1
-#define LOW_COUNT_SD 1
 /*
  *  This routine operates on one bucket at a time.  This means that if
  *  the current bucket is a near match with a former bucket, then the
@@ -424,7 +429,6 @@ putBucketDefend(bucket *bp, attack_setup *as)
 
     if ((as->defense >= MtM_DEFENSE) && (overlap > WEAK_MATCH_THRESHOLD)) {
       // this is a candidate for an MtM attack.
-//printf("%p, %p, %d, %d\n", bp, bp1, overlap, getRealOverlap(bp, bp1));
       addToCluster(bp, bp1, overlap);
       numMatches = initClusterNearMatches(bp);
       if (numMatches <= FOUND_MAX_ATTACK_CLUSTERS) {
@@ -436,6 +440,8 @@ putBucketDefend(bucket *bp, attack_setup *as)
         nearMatch = checkNearMatchAndTouchNonOverlap(left_bp, right_bp,
                                                               &adjustment);
       }
+    }
+    else {
     }
     if (overlap > NEAR_MATCH_THRESHOLD) {
       // filters suggest that there is a lot of overlap

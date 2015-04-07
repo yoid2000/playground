@@ -14,7 +14,7 @@
 #define VICTIM_FIRST 0
 #define VICTIM_LAST 1
 
-// Whether or not victim has attribute
+// Whether or not victim has attribute (must be these values)
 #define NUM_ATTRIBUTES 2
 #define VICTIM_ATTRIBUTE_YES 0
 #define VICTIM_ATTRIBUTE_NO 1
