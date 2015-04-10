@@ -71,10 +71,10 @@ checkClusterSums(int leftMask,
     nearMatchRight[numNearMatch][rightIndex] = NULL;
     // a little invariant checking...
     if (leftIndex > MAX_ATTACK_SIDE) {
-      printf("checkClusterSums ERROR left\n"); exit(1);
+      fprintf(outfile, "checkClusterSums ERROR left\n"); exit(1);
     }
     if (rightIndex > MAX_ATTACK_SIDE) {
-      printf("checkClusterSums ERROR right\n"); exit(1);
+      fprintf(outfile, "checkClusterSums ERROR right\n"); exit(1);
     }
     numNearMatch++;
   }
@@ -139,7 +139,7 @@ initClusterNearMatches(bucket *bp)
   numNearMatch = 0;
   numBuckets = 0;
   if ((cp = bp->clusterHead) == NULL) {
-    printf("initClusterNearMatches() NULL cluster\n");
+    fprintf(outfile, "initClusterNearMatches() NULL cluster\n");
     exit(1);
   }
   // setup the bucketSums array etc.
@@ -180,12 +180,12 @@ initClusterNearMatches(bucket *bp)
   // of near-match cluster, and therefore on the left composite bucket.
   midValue = maxValue >> 1;
   for (i = midValue; i < maxValue; i++) {
-    if (__builtin_popcount(i) < 2) { continue; }
+    if (__builtin_popcount(i) < MIN_ATTACK_SIDE) { continue; }
     for (j = 1; j < midValue; j++) {
-      if (__builtin_popcount(j) < 2) { continue; }
-      if ((i & j) != 0) { continue; }
+      if (__builtin_popcount(j) < MIN_ATTACK_SIDE) { continue; }
+      if ((i & j) != 0) { continue; }     // bucket appears on both sides
       if ((__builtin_popcount(i) + __builtin_popcount(j)) >
-                                                   (MAX_ATTACK_SIDE<<1)) {
+                                                   (MAX_ATTACK_CLUSTER)) {
         continue;
       }
       // we have a new combination.  Check its sums.
@@ -308,7 +308,7 @@ removeFromCluster(bucket *bp, int clusterFree)
     return;
   }
   if (cp->num <= 0) {
-    printf("removeFromCluster ERROR: empty cluster\n");
+    fprintf(outfile, "removeFromCluster ERROR: empty cluster\n");
     exit(1);
   }
 
@@ -345,11 +345,11 @@ joinClusters(cluster *cp1, cluster *cp2)
   freeCluster(cp2);
 
   if (cp1->num != newSize) {
-    printf("joinClusters ERROR bad new size (%d, %d)\n", cp1->num, newSize);
+    fprintf(outfile, "joinClusters ERROR bad new size (%d, %d)\n", cp1->num, newSize);
     exit(1);
   }
   if (cp2->num != 0) {
-    printf("joinClusters ERROR cp2 not empty (%d)\n", cp2->num);
+    fprintf(outfile, "joinClusters ERROR cp2 not empty (%d)\n", cp2->num);
     exit(1);
   }
 }
@@ -362,7 +362,7 @@ getClusterSize(bucket *ibp)
   int i=0;
 
   if ((cp = ibp->clusterHead) == NULL) {
-    printf("initClusterNearMatches() NULL cluster\n");
+    fprintf(outfile, "initClusterNearMatches() NULL cluster\n");
     exit(1);
   }
   for (bp = cp->head.lh_first; bp != NULL; bp = bp->entry.le_next) {
@@ -471,7 +471,7 @@ getAllClusterStats(cluster_stats *csp)
 updateClusterNearMatchStats(cluster_stats *csp, int size, int matches)
 {
   if ((size >= MAX_CLUSTER_SIZE) || (size < MIN_CLUSTER_SIZE)) {
-    printf("updateClusterNearMatchStats ERROR %d (%d)\n", size, matches);
+    fprintf(outfile, "updateClusterNearMatchStats ERROR %d (%d)\n", size, matches);
     printClusterNearMatchStats(csp, stdout);
     exit(1);
   }

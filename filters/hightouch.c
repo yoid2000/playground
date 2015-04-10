@@ -61,20 +61,20 @@ createHighTouchTable(int size)
   // make the high_touch entries table
   max_ht_table = size;
   if ((ht_table = (high_touch *) calloc(size, sizeof(high_touch))) == NULL) {
-    printf("createHighTouchTable() calloc ht_table failed\n"); exit(1);
+    fprintf(outfile, "createHighTouchTable() calloc ht_table failed\n"); exit(1);
   }
   if ((entry_table = (ENTRY *) calloc(size, sizeof(ENTRY))) == NULL) {
-    printf("createHighTouchTable() calloc entry_table failed\n"); exit(1);
+    fprintf(outfile, "createHighTouchTable() calloc entry_table failed\n"); exit(1);
   }
   if ((keys_table = (hash_key *) calloc(size, sizeof(hash_key))) == NULL) {
-    printf("createHighTouchTable() calloc keys_table failed\n"); exit(1);
+    fprintf(outfile, "createHighTouchTable() calloc keys_table failed\n"); exit(1);
   }
   initHighTouchTable();
   // generate a user id per table entry
   bp = makeRandomBucket(size);
   // build a hash table mapping user id into table entry
   if (hcreate(size*2) == 0) {
-    printf("hcreate failed!!\n");
+    fprintf(outfile, "hcreate failed!!\n");
     exit(1);
   }
   lp = bp->list;
@@ -83,7 +83,7 @@ createHighTouchTable(int size)
     entry_table[i].key = keys_table[i].str;
     entry_table[i].data = (void *) &(ht_table[i]);
     if (hsearch(entry_table[i], ENTER) == NULL) {
-      printf("hsearch failed!\n");
+      fprintf(outfile, "hsearch failed!\n");
       exit(1);
     }
     lp++;
@@ -104,7 +104,7 @@ getHighTouch(unsigned int uid)
   ulookup.data = (void *) NULL;
 
   if ((uhash = hsearch(ulookup, FIND)) == NULL) {
-    printf("getHighTouch: hsearch failed (uid %x, key %s)!!\n", 
+    fprintf(outfile, "getHighTouch: hsearch failed (uid %x, key %s)!!\n", 
              uid, ulookup.key);
     exit(1);
   }

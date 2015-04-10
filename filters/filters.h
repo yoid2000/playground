@@ -96,7 +96,9 @@ typedef struct cluster_t {
 // quit after this many near-match attack clusters
 #define MAX_NM_CLUSTERS 20
 // only look for attack clusters with up to this many buckets per side:
-#define MAX_ATTACK_SIDE 4
+#define MIN_ATTACK_SIDE 2
+#define MAX_ATTACK_CLUSTER 8   // 2x6 or 3x5 or 4x4
+#define MAX_ATTACK_SIDE (MAX_ATTACK_CLUSTER-MIN_ATTACK_SIDE)
 // only examine clusters with this many or fewer buckets
 #define MAX_CLUSTER_SIZE 10
 #define MIN_CLUSTER_SIZE 4  // anything less caught by other mechanisms
@@ -114,3 +116,5 @@ typedef struct cluster_stats_t {
   int clusterMatchesBySize[MAX_CLUSTER_SIZE];
   int numClusterMatchesBySize[MAX_CLUSTER_SIZE];
 } cluster_stats;
+
+extern FILE *outfile;

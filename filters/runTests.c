@@ -7,8 +7,13 @@
 bucket **storedFilters;
 int sfIndex;
 
+FILE *outfile;
+
 main()
 {
+
+  outfile = stdout;
+
   srand48((long int) 10);
 
   // test_compareFilterPair();

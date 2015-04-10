@@ -12,6 +12,8 @@
 
 extern float getRandFloat(float arg1, float arg2);
 
+FILE *outfile;
+
 #define MAX_SAMPLES 100
 typedef struct mysamples_t {
   unsigned char samples[MAX_SAMPLES]; 
@@ -99,6 +101,8 @@ main(int argc, char *argv[])
   FILE *f;
   int i, j;
 
+  outfile = stdout;
+
   f = fopen("overlap0.data", "w");
   fprintf(f, "# num_ones_small num_ones_big overlap\n\n");
   for (i = 0; i < 1024; i++) {
@@ -144,6 +148,8 @@ main(int argc, char *argv[])
                 // larger buckets respectively.  o is the overlap value.
   int common, commonSum;
   int k;
+
+  outfile = stdout;
 
   srand48((long int) 10);
 
@@ -197,6 +203,8 @@ main(int argc, char *argv[])
   mystats S;
   unsigned char str[500];
   FILE *f;
+
+  outfile = stdout;
 
   srand48((long int) 10);
 
