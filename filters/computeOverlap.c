@@ -15,6 +15,8 @@ typedef struct mysamples_t {
   unsigned char samples[MAX_SAMPLES]; 
 } mysamples;
 
+FILE *outfile;
+
 #define MAX_VALUE 1024
 #define NUM_LEVELS 1
 // Put these here (global) cause won't go on stack...
@@ -201,6 +203,8 @@ main(int argc, char *argv[])
   int minBucket, maxBucket, numSamples, numSamplesExp;
   double sizeRatioMin, sizeRatioMax;
   char *dir;
+
+  outfile = stdout;
 
   srand48((long int) 10);
 

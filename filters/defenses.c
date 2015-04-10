@@ -288,7 +288,7 @@ checkNearMatchAndTouchNonOverlap(bucket *new_bp,
 addChildLink(bucket *parent, int child_index)
 {
   if (parent->numChildren >= MAX_CHILDREN) {
-    printf("addChildLink: Exceeded MAX_CHILDREN!!\n");
+    fprintf(outfile, "addChildLink: Exceeded MAX_CHILDREN!!\n");
     exit(1);
   }
   parent->children[parent->numChildren] = child_index;
@@ -409,7 +409,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
     storedFilters[sfIndex++] = bp;
   }
   else {
-    printf("Run out of room for filters!\n");
+    fprintf(outfile, "Run out of room for filters!\n");
     exit(1);
   }
 
@@ -422,7 +422,7 @@ putBucketDefend(bucket *bp, attack_setup *as)
     // the following just gathering statistics
     if ((ohist = (int) ((float) overlap / (float) 10)) > 
                                             MAX_OVERLAP_HISTOGRAM) {
-      printf("putBucketDefend() ERROR bad ohist %d (%d)\n", ohist, overlap);
+      fprintf(outfile, "putBucketDefend() ERROR bad ohist %d (%d)\n", ohist, overlap);
       exit(1);
     }
     overlapHistogram[ohist]++;

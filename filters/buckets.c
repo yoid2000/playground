@@ -31,7 +31,7 @@ makeBucket(int bsize)
   bucket *bp;
 
   if ((bp = (bucket*) malloc(sizeof(bucket))) == NULL) {
-    printf("makeBucket() malloc failed\n");  exit(1);
+    fprintf(outfile, "makeBucket() malloc failed\n");  exit(1);
   }
   bp->sorted = 0;
   if (bsize == 0) {
@@ -308,7 +308,7 @@ getNonOverlap3(bucket *mbp, 	// submitted "middle" (new) bucket (sorted)
       // again, and we don't have to worry about it any more
       rl--;
       if (rtemp != 0) {
-        printf("getNonOverlap3() something wrong with rtemp\n");
+        fprintf(outfile, "getNonOverlap3() something wrong with rtemp\n");
         exit(1);
       }
       rtemp = *rl;
@@ -318,7 +318,7 @@ getNonOverlap3(bucket *mbp, 	// submitted "middle" (new) bucket (sorted)
       // same for left bucket
       ll--;
       if (ltemp != 0) {
-        printf("getNonOvellap3() something wrong with ltemp\n");
+        fprintf(outfile, "getNonOvellap3() something wrong with ltemp\n");
         exit(1);
       }
       ltemp = *ll;
@@ -395,11 +395,11 @@ getRealOverlap(bucket *new_bp, bucket *old_bp)
   sortBucketList(old_bp);
   getNonOverlap(new_bp, old_bp, &new_nobp, &old_nobp, &new_obp, &old_obp);
   if (new_obp->bsize != old_obp->bsize) {
-    printf("getRealOverlap() ERROR\n");
+    fprintf(outfile, "getRealOverlap() ERROR\n");
     exit(1);
   }
   if (new_obp->bsize != old_obp->bsize) {
-    printf("getRealOverlap() ERROR %d, %d\n", new_obp->bsize, old_obp->bsize);
+    fprintf(outfile, "getRealOverlap() ERROR %d, %d\n", new_obp->bsize, old_obp->bsize);
   }
   if (new_bp->bsize > old_bp->bsize) {
     overlap = (int)((float)(new_obp->bsize * 100)/(float)(old_bp->bsize));
@@ -655,7 +655,7 @@ addBlock(int selectedBucket, int s, mtm_cluster *mc, int block)
 
   blockNum = mc->bucket[s][selectedBucket].numBlocks;
   if (blockNum >= MAX_NUM_BLOCKS) {
-    printf("addBlock() ERROR num blocks exceeded\n");
+    fprintf(outfile, "addBlock() ERROR num blocks exceeded\n");
     exit(1);
   }
   mc->bucket[s][selectedBucket].blocks[blockNum] = block;
@@ -784,13 +784,13 @@ definePerfectCluster(mtm_cluster *mc, attack_setup *as)
   int i, j, nb, b;
 
   if (as->numLeftBuckets != as->numRightBuckets) {
-    printf("definePerfectCluster() ERROR mismatched sides (%d, %d)\n", 
+    fprintf(outfile, "definePerfectCluster() ERROR mismatched sides (%d, %d)\n", 
                                  as->numLeftBuckets, as->numRightBuckets);
     exit(1);
   }
   nb = as->numLeftBuckets;
   if ((nb > MAX_NUM_BUCKETS_PER_SIDE) || (nb > MAX_NUM_BLOCKS)) {
-    printf("definePerfectCluster() ERROR excess blocks/buckets (%d)\n", nb);
+    fprintf(outfile, "definePerfectCluster() ERROR excess blocks/buckets (%d)\n", nb);
     exit(1);
   }
   mc->numBuckets[LEFT] = nb;
@@ -817,7 +817,7 @@ putBlocksInBucket(int firstBlock, int numBlocks,
   int i;
 
   if (numBlocks > MAX_NUM_BLOCKS) {
-    printf("putBlocksInBucket() ERROR %d\n", numBlocks);
+    fprintf(outfile, "putBlocksInBucket() ERROR %d\n", numBlocks);
     exit(1);
   }
   mc->bucket[side][blockIndex].numBlocks = numBlocks;
@@ -841,13 +841,13 @@ defineBarbellChainCluster(mtm_cluster *mc, attack_setup *as)
   int i, nb, nextBlock, nextBucket;
 
   if (as->numLeftBuckets != as->numRightBuckets) {
-    printf("defineBarbellChainCluster() ERROR mismatched sides (%d, %d)\n", 
+    fprintf(outfile, "defineBarbellChainCluster() ERROR mismatched sides (%d, %d)\n", 
                                  as->numLeftBuckets, as->numRightBuckets);
     exit(1);
   }
   nb = as->numLeftBuckets;
   if (nb > MAX_NUM_BUCKETS_PER_SIDE) {
-    printf("defineBarbellChainCluster() ERROR excess buckets (%d)\n", nb);
+    fprintf(outfile, "defineBarbellChainCluster() ERROR excess buckets (%d)\n", nb);
     exit(1);
   }
   mc->numBuckets[LEFT] = nb;
@@ -887,7 +887,7 @@ defineNunchukCluster(mtm_cluster *mc, attack_setup *as)
   int i, nb, nextBlock, nextBucket;
 
   if ((as->numLeftBuckets != 3) || (as->numRightBuckets != 3)) {
-    printf("defineNunchukCluster() ERROR bad sides (%d, %d)\n", 
+    fprintf(outfile, "defineNunchukCluster() ERROR bad sides (%d, %d)\n", 
                                  as->numLeftBuckets, as->numRightBuckets);
     exit(1);
   }
@@ -928,7 +928,7 @@ defineNunchukBarbellCluster(mtm_cluster *mc, attack_setup *as)
   int i, nb, nextBlock, nextBucket;
 
   if ((as->numLeftBuckets != 3) || (as->numRightBuckets != 2)) {
-    printf("defineNunchukBarbellCluster() ERROR bad sides (%d, %d)\n", 
+    fprintf(outfile, "defineNunchukBarbellCluster() ERROR bad sides (%d, %d)\n", 
                                  as->numLeftBuckets, as->numRightBuckets);
     exit(1);
   }
@@ -963,7 +963,7 @@ defineCluster(mtm_cluster *mc, attack_setup *as)
   }
   else if (as->clusterType == GENERAL_CLUSTER) {
     if ((totalNumBlocks = defineGeneralCluster(mc, as)) == 0) {
-      printf("defineCluster ERROR %d\n", totalNumBlocks);
+      fprintf(outfile, "defineCluster ERROR %d\n", totalNumBlocks);
       printMtmCluster(mc);
       exit(1);
     }
@@ -999,7 +999,7 @@ makeSegregatedBucketFromList(int mask,
 
   for (i = 0; i < userListSize; i++) {
     if (bsize >= max_bsize) {
-      printf("makeSegregatedBucketFromList ERROR (%d, %d)\n", 
+      fprintf(outfile, "makeSegregatedBucketFromList ERROR (%d, %d)\n", 
                                                            bsize, max_bsize);
       exit(1);
     }
@@ -1073,7 +1073,7 @@ removeChildComb(child_comb *c, bucket *pbp)   // parent
   unsigned int i, bit;
 
   if (__builtin_popcount(c->mask) > pbp->numChildren) {
-    printf("removeChildComb() bad mask (%x, %d)\n", c->mask, pbp->numChildren);
+    fprintf(outfile, "removeChildComb() bad mask (%x, %d)\n", c->mask, pbp->numChildren);
     exit(1);
   }
   bit = 1;
@@ -1128,7 +1128,7 @@ getNextChildComb(child_comb *c,
   for (i = 0; i < pbp->numChildren; i++) {
     if (c->mask & bit) {
       if (i >= sfMax) {
-        printf("getNextChildComb() Fail 1\n"); exit(1);
+        fprintf(outfile, "getNextChildComb() Fail 1\n"); exit(1);
       }
       abp = sf[pbp->children[i]];
       temp = combineBuckets(cobp, abp);
@@ -1196,11 +1196,11 @@ doFailChildren(bucket *pbp, int failNum)
 {
   int i;
 
-  printf("num children = %d\n", pbp->numChildren);
+  fprintf(outfile, "num children = %d\n", pbp->numChildren);
   for (i = 0; i < 6; i++) {
-    printf("%d:%d ", i, pbp->children[i]);
+    fprintf(outfile, "%d:%d ", i, pbp->children[i]);
   }
-  printf("\ntest_removeChildComb() FAIL%d\n", failNum);
+  fprintf(outfile, "\ntest_removeChildComb() FAIL%d\n", failNum);
   exit(1);
 }
 

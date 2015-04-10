@@ -25,6 +25,8 @@ extern float putBucket(bucket *bp, attack_setup *as);
 extern endDefense(attack_setup *as);
 extern int getRealOverlap(bucket *new_bp, bucket *old_bp);
 
+FILE *outfile;
+
 #define USER_LIST_SIZE 0x100000  
 
 float *diffAttackDiffs;
@@ -61,7 +63,7 @@ getSegregateMask(attack_setup *as, int *mask, int totalNumBlocks)
     *mask = (*mask << 1) | 1;
   }
   if (*mask < (totalNumBlocks * as->numSamples)) {
-    printf("getSegregateMask() ERROR can't make enough unique blocks for the attack (%d, %d, %d)\n", *mask, totalNumBlocks, as->numSamples);
+    fprintf(outfile, "getSegregateMask() ERROR can't make enough unique blocks for the attack (%d, %d, %d)\n", *mask, totalNumBlocks, as->numSamples);
     exit(1);
   }
 }
@@ -143,9 +145,9 @@ makeChaffBuckets(bucket *userList, attack_setup *as) {
     else {
       overlap = 0;   // only for reporting
     }
-    // printf("Attack: size %d, overlap %d\n", bp1->bsize, overlap);
+    // fprintf(outfile, "Attack: size %d, overlap %d\n", bp1->bsize, overlap);
     noisyCount = putBucket(bp1, as);
-    // printf("Attack: size %d, overlap %d\n", bp2->bsize, overlap);
+    // fprintf(outfile, "Attack: size %d, overlap %d\n", bp2->bsize, overlap);
     noisyCount = putBucket(bp2, as);
   }
 }
@@ -177,7 +179,7 @@ makeBucketsFromCluster(mtm_cluster *mc,
       printAttackSetup(as);
     }
     if (blockIndex > mask) {
-      printf("makeBucketsFromCluster() ERROR blockIndex (%d) too big (%d)\n",
+      fprintf(outfile, "makeBucketsFromCluster() ERROR blockIndex (%d) too big (%d)\n",
                                                          blockIndex, mask);
       exit(1);
     }
@@ -228,7 +230,7 @@ oneAttack(int numSamples,
 
   if ((as->maxLeftBuckets > MAX_NUM_BUCKETS_PER_SIDE) ||
       (as->maxRightBuckets > MAX_NUM_BUCKETS_PER_SIDE)) {
-    printf("oneAttack ERROR1 %d, %d\n",  
+    fprintf(outfile, "oneAttack ERROR1 %d, %d\n",  
                    as->maxLeftBuckets, as->maxRightBuckets);
     exit(1);
   }
@@ -248,7 +250,7 @@ oneAttack(int numSamples,
     makeChaffBuckets(userList, as);
 
     if ((blockIndex + baseBlocks) > lastBlock) {
-      printf("oneAttack ERROR2 %d, %d, %d, %d\n", i, blockIndex, baseBlocks,
+      fprintf(outfile, "oneAttack ERROR2 %d, %d, %d, %d\n", i, blockIndex, baseBlocks,
                                                  lastBlock);
       printAttackSetup(as);
       exit(1);
@@ -297,7 +299,7 @@ oneAttack(int numSamples,
     }
     // and finally feed them to the defense in the appropriate order.
     if (accIndex >= accSize) {
-      printf("oneMtMAttack() accIndex %d exceeds %d\n", accIndex, accSize);
+      fprintf(outfile, "oneMtMAttack() accIndex %d exceeds %d\n", accIndex, accSize);
       exit(1);
     }
     s = first_s;
@@ -335,7 +337,7 @@ makeDecision(float answer, attack_setup *as)
           else { wrongGuesses[VICTIM_ATTRIBUTE_YES]++; }
           break;
         default:
-          printf("makeDecision() should not get here 6\n"); exit(1);
+          fprintf(outfile, "makeDecision() should not get here 6\n"); exit(1);
       }
       break;
     case VICTIM_ATTRIBUTE_NO:
@@ -345,7 +347,7 @@ makeDecision(float answer, attack_setup *as)
       else { wrongGuesses[VICTIM_ATTRIBUTE_NO]++; }
       break;
     default:
-      printf("makeDecision() should not get here 3\n"); exit(1);
+      fprintf(outfile, "makeDecision() should not get here 3\n"); exit(1);
   }
 }
 
@@ -367,7 +369,7 @@ runAttack(bucket *userList, attack_setup *as)
       makeDecision(answer, as);
       endDefense(as);
       if (attackRoundNum == as->numRounds) {
-        printf("runAttack(): bad attackRoundNum %d\n", attackRoundNum);
+        fprintf(outfile, "runAttack(): bad attackRoundNum %d\n", attackRoundNum);
         exit(1);
       }
       diffAttackDiffs[attackRoundNum++] = answer;
@@ -476,6 +478,8 @@ main(int argc, char *argv[])
   attack_setup as;
   int ran, c, seed=0;
   unsigned char path[378], dir[128], filename[256], temp[32], plotname[256];
+
+  outfile = stdout;
 
   filename[0] = '\0';
 
@@ -631,12 +635,13 @@ main(int argc, char *argv[])
 
   sprintf(path, "%s%s", dir, filename);
   if ((as.f = fopen(path, "w")) == NULL) {
-    printf("Couldn't open file %s\n", path);
+    fprintf(outfile, "Couldn't open file %s\n", path);
     exit(1);
   }
+  outfile = as.f;
   sprintf(path, "%s%s", dir, plotname);
   if ((as.plot = fopen(path, "w")) == NULL) {
-    printf("Couldn't open file %s\n", path);
+    fprintf(outfile, "Couldn't open file %s\n", path);
     exit(1);
   }
 
